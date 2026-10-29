@@ -1,0 +1,4 @@
+# 启动器是 bash 脚本，必须保持 LF：Windows 上 checkout 成 CRLF 会让 bash 直接报错。
+**/bin/easyapi text eol=lf
+*.sh text eol=lf
+* text=auto

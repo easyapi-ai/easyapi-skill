@@ -1,0 +1,19 @@
+{
+  "name": "dev-easyapi-skill",
+  "plugins": [
+    {
+      "name": "easyapi",
+      "source": "./plugins/easyapi",
+      "version": "0.5.0",
+      "description": "通过 EasyAPI 模型网关生成图片、视频与文本对话，并查询模型参数与价格。发送前按模型参数定义校验，参数错误在本地拦下。",
+      "displayName": "EasyAPI",
+      "displayName_i18n": {
+        "zh-CN": "EasyAPI 模型网关"
+      },
+      "description_i18n": {
+        "zh-CN": "让 agent 直接调用 EasyAPI 网关生成图片、生视频、文本对话，并查询可用模型、模型参数与价格。发送前按模型的参数定义逐项校验（必填 / 枚举 / 上下限），参数错误在本地就被拦下并给出精确提示。"
+      },
+      "category": "developer-tools"
+    }
+  ]
+}

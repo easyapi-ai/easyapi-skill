@@ -1,0 +1,3552 @@
+{
+  "_meta": {
+    "generated_at": "2026-10-29",
+    "generated_from": [
+      "image_models.json",
+      "video_models.json",
+      "all_models.json"
+    ],
+    "model_count": 38,
+    "note": "内置参数快照，用于线上 /pricing/schema 不可用或未声明 params 时兜底。线上接口返回有效 schema 时以线上为准；重跑 tools/build_snapshot.py --from-api 刷新。"
+  },
+  "models": {
+    "Kling-1.6": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "string",
+              "description": "生成模式",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "cfg_scale": {
+              "type": "number",
+              "description": "提示词引导强度",
+              "required": false
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Kling-2.0": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "string",
+              "description": "生成模式",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "cfg_scale": {
+              "type": "number",
+              "description": "提示词引导强度",
+              "required": false
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Kling-2.1": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "string",
+              "description": "生成模式",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "cfg_scale": {
+              "type": "number",
+              "description": "提示词引导强度",
+              "required": false
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Kling-2.5": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "string",
+              "description": "生成模式",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "cfg_scale": {
+              "type": "number",
+              "description": "提示词引导强度",
+              "required": false
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Kling-2.6": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "string",
+              "description": "生成模式",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "cfg_scale": {
+              "type": "number",
+              "description": "提示词引导强度",
+              "required": false
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Kling-3.0": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "string",
+              "description": "生成模式",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "cfg_scale": {
+              "type": "number",
+              "description": "提示词引导强度",
+              "required": false
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Kling-3.0-Omni": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "string",
+              "description": "生成模式",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "cfg_scale": {
+              "type": "number",
+              "description": "提示词引导强度",
+              "required": false
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Kling-O1": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "type": "string",
+              "description": "生成模式",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "cfg_scale": {
+              "type": "number",
+              "description": "提示词引导强度",
+              "required": false
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "chatgpt-image-latest": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true,
+              "max_length": 32000
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "background": {
+              "type": "string",
+              "description": "生成图像背景",
+              "required": false,
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "moderation": {
+              "type": "string",
+              "description": "内容审核级别",
+              "required": false,
+              "enum": [
+                "low",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "output_compression": {
+              "type": "integer",
+              "description": "JPEG/WebP 输出压缩质量（百分比）",
+              "required": false,
+              "min": 0,
+              "max": 100
+            },
+            "output_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false,
+              "enum": [
+                "png",
+                "jpeg",
+                "webp"
+              ]
+            },
+            "partial_images": {
+              "type": "integer",
+              "description": "流式响应中的中间图数量",
+              "required": false,
+              "min": 0,
+              "max": 3
+            },
+            "quality": {
+              "type": "string",
+              "description": "图像质量",
+              "required": false,
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸；支持标准尺寸，部分 GPT Image 版本支持任意 WIDTHxHEIGHT",
+              "required": false
+            },
+            "stream": {
+              "type": "boolean",
+              "description": "是否以流式模式生成图片",
+              "required": false,
+              "default": false
+            },
+            "user": {
+              "type": "string",
+              "description": "终端用户标识",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "编辑或参考图输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "提供最先进的视觉质量、精确的指令执行以及对大规模批量处理的支持。",
+      "tags": "视觉,前沿,图像问答",
+      "endpoints": {
+        "image-generation": {
+          "path": "/v1/images/generations",
+          "method": "POST"
+        }
+      }
+    },
+    "gemini-2.5-flash-image": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸或宽高比",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "参考图/编辑输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "侧重高速出图与对话式编辑，延迟低、成本低，支持文本与图像多模态输入。",
+      "tags": "实时响应,创意生成,高质量生成,营销"
+    },
+    "gemini-3-pro-image": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸或宽高比",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "参考图/编辑输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "内置推理能力，擅长复杂多轮创作，最高 4K，可联网增强。",
+      "tags": "创意生成,高质量生成,内容生成"
+    },
+    "gemini-3.1-flash-image": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸或宽高比",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "参考图/编辑输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "图像生成与编辑模型，画质接近旗舰而出图速度更快，可渲染清晰文字与写实主体，适用于信息图与营销视觉制作。",
+      "tags": "创意生成,高质量生成,内容生成"
+    },
+    "gemini-3.1-flash-image-preview": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸或宽高比",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "参考图/编辑输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "兼顾速度与画质，支持多档分辨率与图像搜索增强。",
+      "tags": "创意生成,高质量生成,内容生成"
+    },
+    "gemini-3.1-flash-lite-image": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸或宽高比",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "参考图/编辑输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "系列中最轻量的图像模型， 快速完成出图，支持角色一致性与精细图像编辑，面向高吞吐生成管线与互动式视觉迭代。",
+      "tags": "高性价比,实时响应,轻量,创意生成"
+    },
+    "gpt-image-1": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true,
+              "max_length": 32000
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "background": {
+              "type": "string",
+              "description": "生成图像背景",
+              "required": false,
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "moderation": {
+              "type": "string",
+              "description": "内容审核级别",
+              "required": false,
+              "enum": [
+                "low",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "output_compression": {
+              "type": "integer",
+              "description": "JPEG/WebP 输出压缩质量（百分比）",
+              "required": false,
+              "min": 0,
+              "max": 100
+            },
+            "output_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false,
+              "enum": [
+                "png",
+                "jpeg",
+                "webp"
+              ]
+            },
+            "partial_images": {
+              "type": "integer",
+              "description": "流式响应中的中间图数量",
+              "required": false,
+              "min": 0,
+              "max": 3
+            },
+            "quality": {
+              "type": "string",
+              "description": "图像质量",
+              "required": false,
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸；支持标准尺寸，部分 GPT Image 版本支持任意 WIDTHxHEIGHT",
+              "required": false
+            },
+            "stream": {
+              "type": "boolean",
+              "description": "是否以流式模式生成图片",
+              "required": false,
+              "default": false
+            },
+            "user": {
+              "type": "string",
+              "description": "终端用户标识",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "编辑或参考图输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "原生多模态模型，接收文本与图像输入并输出图像，支持生成与编辑。",
+      "tags": "视觉,创意生成,图片解析",
+      "endpoints": {
+        "image-generation": {
+          "path": "/v1/images/generations",
+          "method": "POST"
+        }
+      }
+    },
+    "gpt-image-1-mini": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true,
+              "max_length": 32000
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "background": {
+              "type": "string",
+              "description": "生成图像背景",
+              "required": false,
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "moderation": {
+              "type": "string",
+              "description": "内容审核级别",
+              "required": false,
+              "enum": [
+                "low",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "output_compression": {
+              "type": "integer",
+              "description": "JPEG/WebP 输出压缩质量（百分比）",
+              "required": false,
+              "min": 0,
+              "max": 100
+            },
+            "output_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false,
+              "enum": [
+                "png",
+                "jpeg",
+                "webp"
+              ]
+            },
+            "partial_images": {
+              "type": "integer",
+              "description": "流式响应中的中间图数量",
+              "required": false,
+              "min": 0,
+              "max": 3
+            },
+            "quality": {
+              "type": "string",
+              "description": "图像质量",
+              "required": false,
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸；支持标准尺寸，部分 GPT Image 版本支持任意 WIDTHxHEIGHT",
+              "required": false
+            },
+            "stream": {
+              "type": "boolean",
+              "description": "是否以流式模式生成图片",
+              "required": false,
+              "default": false
+            },
+            "user": {
+              "type": "string",
+              "description": "终端用户标识",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "编辑或参考图输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "同架构的低成本版本，同样支持文本与图像输入出图，调用费用更低。",
+      "tags": "轻量,视觉,创意生成",
+      "endpoints": {
+        "image-generation": {
+          "path": "/v1/images/generations",
+          "method": "POST"
+        }
+      }
+    },
+    "gpt-image-1.5": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true,
+              "max_length": 32000
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "background": {
+              "type": "string",
+              "description": "生成图像背景",
+              "required": false,
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "moderation": {
+              "type": "string",
+              "description": "内容审核级别",
+              "required": false,
+              "enum": [
+                "low",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "output_compression": {
+              "type": "integer",
+              "description": "JPEG/WebP 输出压缩质量（百分比）",
+              "required": false,
+              "min": 0,
+              "max": 100
+            },
+            "output_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false,
+              "enum": [
+                "png",
+                "jpeg",
+                "webp"
+              ]
+            },
+            "partial_images": {
+              "type": "integer",
+              "description": "流式响应中的中间图数量",
+              "required": false,
+              "min": 0,
+              "max": 3
+            },
+            "quality": {
+              "type": "string",
+              "description": "图像质量",
+              "required": false,
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸；支持标准尺寸，部分 GPT Image 版本支持任意 WIDTHxHEIGHT",
+              "required": false
+            },
+            "stream": {
+              "type": "boolean",
+              "description": "是否以流式模式生成图片",
+              "required": false,
+              "default": false
+            },
+            "user": {
+              "type": "string",
+              "description": "终端用户标识",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "编辑或参考图输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "指令遵循与编辑精度更强，编辑时更好保留人脸与 Logo 等细节，生成更快。",
+      "tags": "视觉,平衡性能,图片解析",
+      "endpoints": {
+        "image-generation": {
+          "path": "/v1/images/generations",
+          "method": "POST"
+        }
+      }
+    },
+    "gpt-image-2": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true,
+              "max_length": 32000
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "background": {
+              "type": "string",
+              "description": "生成图像背景",
+              "required": false,
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "moderation": {
+              "type": "string",
+              "description": "内容审核级别",
+              "required": false,
+              "enum": [
+                "low",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "output_compression": {
+              "type": "integer",
+              "description": "JPEG/WebP 输出压缩质量（百分比）",
+              "required": false,
+              "min": 0,
+              "max": 100
+            },
+            "output_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false,
+              "enum": [
+                "png",
+                "jpeg",
+                "webp"
+              ]
+            },
+            "partial_images": {
+              "type": "integer",
+              "description": "流式响应中的中间图数量",
+              "required": false,
+              "min": 0,
+              "max": 3
+            },
+            "quality": {
+              "type": "string",
+              "description": "图像质量",
+              "required": false,
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸；支持标准尺寸，部分 GPT Image 版本支持任意 WIDTHxHEIGHT",
+              "required": false
+            },
+            "stream": {
+              "type": "boolean",
+              "description": "是否以流式模式生成图片",
+              "required": false,
+              "default": false
+            },
+            "user": {
+              "type": "string",
+              "description": "终端用户标识",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "编辑或参考图输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "支持灵活画幅与高保真参考输入，生成与编辑更快，多语言文字与复杂构图表现更好。",
+      "tags": "视觉,前沿,创意生成",
+      "endpoints": {
+        "image-generation": {
+          "path": "/v1/images/generations",
+          "method": "POST"
+        }
+      }
+    },
+    "gpt-image-2.5-flare": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true,
+              "max_length": 32000
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "background": {
+              "type": "string",
+              "description": "生成图像背景",
+              "required": false,
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "moderation": {
+              "type": "string",
+              "description": "内容审核级别",
+              "required": false,
+              "enum": [
+                "low",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "output_compression": {
+              "type": "integer",
+              "description": "JPEG/WebP 输出压缩质量（百分比）",
+              "required": false,
+              "min": 0,
+              "max": 100
+            },
+            "output_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false,
+              "enum": [
+                "png",
+                "jpeg",
+                "webp"
+              ]
+            },
+            "partial_images": {
+              "type": "integer",
+              "description": "流式响应中的中间图数量",
+              "required": false,
+              "min": 0,
+              "max": 3
+            },
+            "quality": {
+              "type": "string",
+              "description": "图像质量",
+              "required": false,
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸；支持标准尺寸，部分 GPT Image 版本支持任意 WIDTHxHEIGHT",
+              "required": false
+            },
+            "stream": {
+              "type": "boolean",
+              "description": "是否以流式模式生成图片",
+              "required": false,
+              "default": false
+            },
+            "user": {
+              "type": "string",
+              "description": "终端用户标识",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "编辑或参考图输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "GPT-Image-2.5-Flare 是 OpenAI GPT-Image-2.5 系列中面向速度的图像生成与编辑模型，适合高并发日常生图、创作者内容和快速原型，通过 Images API 调用。",
+      "tags": "图片"
+    },
+    "gpt-image-2.5-sunburst": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true,
+              "max_length": 32000
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "background": {
+              "type": "string",
+              "description": "生成图像背景",
+              "required": false,
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "moderation": {
+              "type": "string",
+              "description": "内容审核级别",
+              "required": false,
+              "enum": [
+                "low",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "output_compression": {
+              "type": "integer",
+              "description": "JPEG/WebP 输出压缩质量（百分比）",
+              "required": false,
+              "min": 0,
+              "max": 100
+            },
+            "output_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false,
+              "enum": [
+                "png",
+                "jpeg",
+                "webp"
+              ]
+            },
+            "partial_images": {
+              "type": "integer",
+              "description": "流式响应中的中间图数量",
+              "required": false,
+              "min": 0,
+              "max": 3
+            },
+            "quality": {
+              "type": "string",
+              "description": "图像质量",
+              "required": false,
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸；支持标准尺寸，部分 GPT Image 版本支持任意 WIDTHxHEIGHT",
+              "required": false
+            },
+            "stream": {
+              "type": "boolean",
+              "description": "是否以流式模式生成图片",
+              "required": false,
+              "default": false
+            },
+            "user": {
+              "type": "string",
+              "description": "终端用户标识",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "编辑或参考图输入",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "GPT-Image-2.5-Sunburst 是 OpenAI GPT-Image-2.5 系列中面向精度的图像生成与编辑模型，适合编辑准确性优先于生成速度的精细创作，通过 Images API 调用。",
+      "tags": "图片"
+    },
+    "hailuo-02": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "支持文生与图生视频，可输出 6-10 秒、512p/768p/1080p 多档画质，支持运镜指令控制，在画质与成本间灵活平衡。",
+      "tags": "高性价比,创意生成,内容生成,多模态理解",
+      "endpoints": {
+        "api-video": {
+          "path": "/v1/videos",
+          "method": "POST"
+        }
+      }
+    },
+    "hailuo-2.3": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "支持文生与图生视频，可输出 6-10 秒、768p/1080p 画面，支持精细运镜指令控制，运动流畅、主体稳定，适合短视频创意内容。",
+      "tags": "创意生成,高质量生成,内容生成,多模态理解",
+      "endpoints": {
+        "api-video": {
+          "path": "/v1/videos",
+          "method": "POST"
+        }
+      }
+    },
+    "happyhorse-1.0-i2v": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "HappyHorse-1.0-I2V支持图生视频，具备高度还原的动态画面生成能力，能够精准理解文本语义，输出流畅自然、细节丰富的高质量视频。",
+      "endpoints": {
+        "seedance-video-generation": {
+          "path": "/v1/video/generations",
+          "method": "POST"
+        },
+        "seedance-video-task": {
+          "path": "/v1/video/generations/{task_id}",
+          "method": "GET"
+        }
+      }
+    },
+    "happyhorse-1.0-r2v": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "HappyHorse-1.0-R2V支持参考生视频，更加稳定的主体与场景参考，支持最多9张图片参考，能够精准保持创作意图，实现更强表现能力。",
+      "endpoints": {
+        "seedance-video-generation": {
+          "path": "/v1/video/generations",
+          "method": "POST"
+        },
+        "seedance-video-task": {
+          "path": "/v1/video/generations/{task_id}",
+          "method": "GET"
+        }
+      }
+    },
+    "happyhorse-1.0-video-edit": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "HappyHorse-1.0-Video-Edit支持视频编辑，自然语言指令编辑视频，可参考最多5张图片局部或全局编辑视频元素，能够精准复刻视频动态过程，实现更强表现能力。",
+      "endpoints": {
+        "seedance-video-generation": {
+          "path": "/v1/video/generations",
+          "method": "POST"
+        },
+        "seedance-video-task": {
+          "path": "/v1/video/generations/{task_id}",
+          "method": "GET"
+        }
+      }
+    },
+    "qwen-image-2.0": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "watermark": {
+              "type": "boolean",
+              "description": "是否添加水印",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "生成与编辑统一于同一模型；原生 2K，支持专业排版与信息图。",
+      "tags": "视觉,创意生成,图像问答",
+      "endpoints": {
+        "image-generation": {
+          "path": "/v1/images/generations",
+          "method": "POST"
+        }
+      }
+    },
+    "qwen-image-2.0-pro": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "watermark": {
+              "type": "boolean",
+              "description": "是否添加水印",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "生成与编辑融合；文字渲染更专业，写实纹理与场景细节更丰富。",
+      "tags": "视觉,深度分析,创意生成",
+      "endpoints": {
+        "image-generation": {
+          "path": "/v1/images/generations",
+          "method": "POST"
+        }
+      }
+    },
+    "seedance-2.0": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "Seedance 系列主力版本，文生视频与图生视频兼容，擅长保持角色一致性、视觉风格与镜头运镜，适合广告与创意短视频量产。",
+      "tags": "视觉,前沿,创意生成,内容生成",
+      "endpoints": {
+        "api-video": {
+          "path": "/v1/videos",
+          "method": "POST"
+        },
+        "seedance-video-generation": {
+          "path": "/v1/video/generations",
+          "method": "POST"
+        },
+        "seedance-video-task": {
+          "path": "/v1/video/generations/{task_id}",
+          "method": "GET"
+        }
+      }
+    },
+    "seedance-2.0-fast": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "Seedance 2.0 系列轻量版，生成速度与成本优先，支持文生视频、首尾帧控制与多参考图生视频，适合快速试样与量产化视频流水线。",
+      "tags": "视频",
+      "endpoints": {
+        "api-video": {
+          "path": "/v1/videos",
+          "method": "POST"
+        },
+        "seedance-video-generation": {
+          "path": "/v1/video/generations",
+          "method": "POST"
+        },
+        "seedance-video-task": {
+          "path": "/v1/video/generations/{task_id}",
+          "method": "GET"
+        }
+      }
+    },
+    "seedance-2.0-mini": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "Seedance 2.0 mini 是面向更广泛视频生成需求推出的新一代高性价比视频生成模型。在保持竞争力效果的同时，将视频生成能力带入更低门槛、更高频、更规模化的应用场景。",
+      "tags": "视频",
+      "endpoints": {
+        "seedance-video-generation": {
+          "path": "/v1/video/generations",
+          "method": "POST"
+        },
+        "seedance-video-task": {
+          "path": "/v1/video/generations/{task_id}",
+          "method": "GET"
+        }
+      }
+    },
+    "seedance-2.5": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "camera_control": {
+              "type": "object",
+              "description": "摄像机控制参数",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "seedream-4.0": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "response_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false
+            },
+            "watermark": {
+              "type": "boolean",
+              "description": "是否添加水印",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "sequential_image_generation": {
+              "type": "string",
+              "description": "组图生成模式",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "新一代统一架构，集成生成与编辑；支持知识型生成与参考图一致性，最高 4K。",
+      "tags": "视觉,创意生成,图片解析"
+    },
+    "seedream-4.5": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "response_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false
+            },
+            "watermark": {
+              "type": "boolean",
+              "description": "是否添加水印",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "sequential_image_generation": {
+              "type": "string",
+              "description": "组图生成模式",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "模型整体扩容后全面提升；多图编辑主体识别更准，参考图细节保留更严，密集文字渲染更强。",
+      "tags": "视觉,平衡性能,创意生成"
+    },
+    "seedream-5.0-lite": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "response_format": {
+              "type": "string",
+              "description": "输出格式",
+              "required": false
+            },
+            "watermark": {
+              "type": "boolean",
+              "description": "是否添加水印",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "sequential_image_generation": {
+              "type": "string",
+              "description": "组图生成模式",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "引入深度推理能力，更好理解复杂描述并结合常识，编辑前后一致性更强。",
+      "tags": "轻量,视觉,图片解析"
+    },
+    "sora-2": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "enum": [
+                4,
+                8,
+                12,
+                16,
+                20
+              ],
+              "min": 4,
+              "max": 20
+            },
+            "size": {
+              "type": "string",
+              "description": "视频尺寸",
+              "required": false,
+              "enum": [
+                "720x1280",
+                "1280x720"
+              ]
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "可从文本或参考图像生成画质细腻、动态丰富的 720p 视频并自带同步音轨，对三维空间、运动与镜头连续性理解出色，适合 16-20 秒的电影级短片创作。",
+      "tags": "前沿,创意生成,高质量生成,多模态理解",
+      "endpoints": {
+        "api-video": {
+          "path": "/v1/videos",
+          "method": "POST"
+        }
+      }
+    },
+    "wan2.6-image": {
+      "category": "image",
+      "params": {
+        "image": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "图像文本描述",
+              "required": true
+            },
+            "n": {
+              "type": "integer",
+              "description": "生成图片数量",
+              "required": false,
+              "default": 1,
+              "min": 1,
+              "max": 10
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "watermark": {
+              "type": "boolean",
+              "description": "是否添加水印",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "万相2.6-图像生成，全能图像生成模型，支持图文一体化推理生成，具备多图创意融合、商用级一致性、美学要素迁移与镜头光影精确控制，全面提升图像生成的一致性、可控性和表现力。",
+      "endpoints": {
+        "image-generation": {
+          "path": "/v1/images/generations",
+          "method": "POST"
+        }
+      }
+    },
+    "wan2.6-t2v": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "watermark": {
+              "type": "boolean",
+              "description": "是否添加水印",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "从文本提示生成 720p/1080p 视频并自带同步音轨，画面具备电影级美学与复杂运动表现，适合创意视频创作。",
+      "tags": "创意生成,高质量生成,内容生成,多模态理解",
+      "endpoints": {
+        "api-video": {
+          "path": "/v1/videos",
+          "method": "POST"
+        }
+      }
+    },
+    "wan2.7-i2v": {
+      "category": "video",
+      "params": {
+        "video": {
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "视频文本描述",
+              "required": true
+            },
+            "image": {
+              "type": "string",
+              "description": "单个输入图片或参考素材 URL",
+              "required": false
+            },
+            "images": {
+              "type": "array",
+              "description": "多个输入图片或参考素材 URL",
+              "required": false,
+              "items": {
+                "type": "string"
+              }
+            },
+            "duration": {
+              "type": "integer",
+              "description": "视频时长（秒）",
+              "required": false,
+              "min": 1
+            },
+            "size": {
+              "type": "string",
+              "description": "输出尺寸",
+              "required": false
+            },
+            "resolution": {
+              "type": "string",
+              "description": "输出分辨率",
+              "required": false
+            },
+            "aspect_ratio": {
+              "type": "string",
+              "description": "输出宽高比",
+              "required": false
+            },
+            "generate_audio": {
+              "type": "boolean",
+              "description": "是否生成音频",
+              "required": false
+            },
+            "seed": {
+              "type": "integer",
+              "description": "随机种子",
+              "required": false
+            },
+            "webhook_url": {
+              "type": "string",
+              "description": "任务完成回调地址",
+              "required": false
+            },
+            "input_references": {
+              "type": "array",
+              "description": "结构化输入引用列表",
+              "required": false,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "required": true,
+                    "enum": [
+                      "image",
+                      "video",
+                      "audio"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "required": true
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "reference_image",
+                      "reference_video",
+                      "reference_audio"
+                    ]
+                  }
+                }
+              }
+            },
+            "negative_prompt": {
+              "type": "string",
+              "description": "负面提示词",
+              "required": false
+            },
+            "watermark": {
+              "type": "boolean",
+              "description": "是否添加水印",
+              "required": false
+            }
+          }
+        }
+      },
+      "description": "万相2.7-图生视频，演绎能力全面升级，文戏情感细腻自然，动作戏激烈拳拳到肉，搭配更富有戏剧性和节奏感的镜头切换，实现更强表演能力。",
+      "endpoints": {
+        "seedance-video-generation": {
+          "path": "/v1/video/generations",
+          "method": "POST"
+        },
+        "seedance-video-task": {
+          "path": "/v1/video/generations/{task_id}",
+          "method": "GET"
+        }
+      }
+    }
+  }
+}

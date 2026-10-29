@@ -16,19 +16,23 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import http.cookiejar
 import http.server
 import json
 import mimetypes
 import os
+import platform
 import re
 import secrets
+import subprocess
 import sys
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 import webbrowser
 
 # --------------------------------------------------------------------------
@@ -107,11 +111,13 @@ SCHEMA_CATEGORIES = ("text", "image", "audio", "video")
 class EasyAPIError(Exception):
     """带可执行建议的错误。hint 会直接展示给用户。"""
 
-    def __init__(self, message, hint=None, detail=None):
+    def __init__(self, message, hint=None, detail=None, status=None):
         super().__init__(message)
         self.message = message
         self.hint = hint
         self.detail = detail
+        # HTTP 状态码（有的话）：调用方要区分「认证失败」与「网络抖动」
+        self.status = status
 
 
 # --------------------------------------------------------------------------
@@ -224,12 +230,98 @@ def default_model(cfg, category):
 
 
 # --------------------------------------------------------------------------
+# 客户端身份（设备指纹）
+# --------------------------------------------------------------------------
+
+CLIENT_ID_HEADER = "X-EasyAPI-Client-Id"
+_FINGERPRINT_VERSION = "easyapi-client-v1"
+_FINGERPRINT_CACHE = {}
+
+
+def _fingerprint_from(parts):
+    """把设备标识拼成稳定指纹。单独抽出来是为了可测试。"""
+    raw = _FINGERPRINT_VERSION + "|" + "|".join(str(p) for p in parts)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _machine_identifier():
+    """取平台级机器标识：Windows 的 MachineGuid、Linux 的 machine-id、
+    macOS 的 IOPlatformUUID。三者都不随主机名/OS 升级变化，适合做绑定锚点。
+    """
+    system = platform.system().lower()
+    try:
+        if system == "windows":
+            import winreg  # 仅 Windows 存在
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                r"SOFTWARE\Microsoft\Cryptography") as key:
+                return str(winreg.QueryValueEx(key, "MachineGuid")[0])
+        if system == "darwin":
+            out = subprocess.run(
+                ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+                capture_output=True, text=True, timeout=5).stdout
+            match = re.search(r'"IOPlatformUUID"\s*=\s*"([^"]+)"', out)
+            return match.group(1) if match else ""
+        for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as fh:
+                    return fh.read().strip()
+    except Exception:  # noqa: BLE001 —— 取不到就走退路，不能因为读标识失败就报错
+        return ""
+    return ""
+
+
+def device_fingerprint():
+    """计算本机指纹（每次现算，绝不写进配置文件）。
+
+    这是「配置文件被拷到别的机器」的防线：泄漏的 config 里只有 key，没有指纹；
+    换台机器算出来的值不同，网关会拒绝。它防不了同机恶意软件（能读 key 也能读
+    设备信息），这是本地凭据的固有限制，文档里如实说明。
+    """
+    parts = []
+    machine_id = _machine_identifier()
+    if machine_id:
+        parts.append(machine_id)
+    else:
+        # 退路 1：MAC。uuid.getnode 取不到时会返回带随机标记的值，不能当锚点
+        node = uuid.getnode()
+        if not (node >> 40) & 1:
+            parts.append("%012x" % node)
+        # 退路 2：主机名（改名后需要重新授权，这是可接受的降级）
+        parts.append(platform.node() or "unknown-host")
+    parts.extend([platform.system().lower(), platform.machine().lower()])
+    return _fingerprint_from(parts)
+
+
+def client_id():
+    """进程内只算一次：同一命令里多次请求必须用同一个指纹。"""
+    if "value" not in _FINGERPRINT_CACHE:
+        _FINGERPRINT_CACHE["value"] = device_fingerprint()
+    return _FINGERPRINT_CACHE["value"]
+
+
+def client_label():
+    """绑定到令牌上的人类可读标签，方便控制台认出是哪台机器。"""
+    host = platform.node() or "unknown-host"
+    return ("%s / easyapi-skill" % host)[:128]
+
+
+def with_client_header(headers):
+    """给带鉴权的请求补上设备指纹；匿名请求不加，避免把指纹发给无关服务。"""
+    out = dict(headers or {})
+    has_auth = any(str(key).lower() == "authorization" for key in out)
+    if has_auth and not any(str(key).lower() == CLIENT_ID_HEADER.lower() for key in out):
+        out[CLIENT_ID_HEADER] = client_id()
+    return out
+
+
+# --------------------------------------------------------------------------
 # HTTP
 # --------------------------------------------------------------------------
 
 
 def _send_raw(method, url, data, content_type, headers, timeout):
     """返回 (status, headers, raw_bytes)。HTTP 错误不抛异常，交给调用方判断。"""
+    headers = with_client_header(headers)
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Accept", "application/json")
     if content_type:
@@ -320,6 +412,16 @@ def http_json(method, url, headers=None, body=None, timeout=DEFAULT_HTTP_TIMEOUT
     return status, payload, text
 
 
+def _error_code(payload):
+    """取网关错误里的机器可读 code（OpenAI 风格 error.code 或顶层 code）。"""
+    if not isinstance(payload, dict):
+        return ""
+    err = payload.get("error")
+    if isinstance(err, dict) and err.get("code"):
+        return str(err["code"])
+    return str(payload.get("code") or "")
+
+
 def translate_error(status, payload, text, model=None):
     """把网关错误翻译成可执行建议。这是 skill 降低试错成本的关键一环。"""
     message = ""
@@ -334,6 +436,15 @@ def translate_error(status, payload, text, model=None):
                 break
     if not message:
         message = (text or "").strip()[:400] or "HTTP %s" % status
+
+    # 设备绑定不匹配是「key 有效但不能在这台机器用」，必须先于 403 的通用文案判断
+    if _error_code(payload) == "client_binding_mismatch":
+        return message, (
+            "这个 key 已绑定到另一台设备（设备指纹不匹配）。换机器、改主机名、"
+            "或配置是从别处拷来的都会这样。\n"
+            "  换绑：login --browser --rebind（重新授权 → 新建绑定本机的 key → 自动吊销旧 key）\n"
+            "  若确实要在多台机器用，请分别登录、各建一个 key。"
+        )
 
     hint = None
     low = message.lower()
@@ -1713,8 +1824,9 @@ def _describe_token_row(t):
 
 
 def provision_api_key(base, access_token, user_id, key_name, reporter,
-                      reuse=None, create_new=False):
-    """找到或创建可用的 sk- key。
+                      reuse=None, create_new=False, bind=True,
+                      key_quota_usd=None, key_expire_days=None):
+    """找到或创建可用的 sk- key，返回 (key, token_id)。
 
     策略（固定名复用 + 不擅自新建）：
     1. 显式 --reuse-key：按 id 或名字精确匹配已有令牌，取明文；
@@ -1724,6 +1836,9 @@ def provision_api_key(base, access_token, user_id, key_name, reporter,
        擅自再建一个会在控制台堆积；
     4. 账号下一个可用令牌都没有：自动创建（全新账号零摩擦）。
     同名令牌被禁用时不擅自启用，只如实报告。
+
+    只有「新建」的令牌会带设备绑定（client_id）：复用的令牌可能还在别的
+    脚本/机器上用，擅自给它加绑定会把人锁在外面。
     """
     headers = dashboard_headers(access_token, user_id)
 
@@ -1751,7 +1866,9 @@ def provision_api_key(base, access_token, user_id, key_name, reporter,
                 "指定的令牌 %s" % _describe_token_row(target),
                 hint="到控制台 %s/console/token 启用它，或换一个。" % base)
         reporter.progress("按指定复用令牌 %s" % _describe_token_row(target))
-        return _fetch_token_key(base, headers, target["id"])
+        if target.get("client_id"):
+            reporter.progress("注意：该令牌已绑定设备，换机使用会报绑定不匹配。")
+        return _fetch_token_key(base, headers, target["id"]), target["id"]
 
     # 2) 同名复用
     matches = [t for t in _list_tokens(base, headers, key_name)
@@ -1771,7 +1888,11 @@ def provision_api_key(base, access_token, user_id, key_name, reporter,
         if others:
             reporter.progress("另有 %d 个同名令牌被忽略：%s"
                               % (len(others), ", ".join(str(t["id"]) for t in others)))
-        return _fetch_token_key(base, headers, chosen["id"])
+        if chosen.get("client_id") and not create_new:
+            # 复用同名令牌时不做绑定变更；如果它绑在别的设备上，后续验证会报
+            # client_binding_mismatch，提示里给出 --rebind 的走法
+            reporter.progress("该令牌已绑定设备；若本机指纹不同会提示换绑。")
+        return _fetch_token_key(base, headers, chosen["id"]), chosen["id"]
 
     # 3) 没有同名令牌：先看账号下有没有其它可用令牌，有则把选择权交回用户
     if not create_new:
@@ -1787,14 +1908,27 @@ def provision_api_key(base, access_token, user_id, key_name, reporter,
                     "  B) 新建专用令牌（推荐，便于单独吊销）：--create-new\n"
                     "当前可用令牌：\n%s" % listing))
 
-    # 4) 全新账号（或用户选择新建）：自动创建
-    reporter.progress("正在创建「%s」（不限额度、永不过期）…" % key_name)
-    dashboard_request("POST", "/token", headers, base=base, body={
+    # 4) 全新账号（或用户选择新建）
+    body = {
         "name": key_name,
-        "unlimited_quota": True,
+        "unlimited_quota": key_quota_usd is None,
         "expired_time": -1,
         "model_limits_enabled": False,
-    })
+    }
+    if key_quota_usd is not None:
+        body["remain_quota"] = max(0, int(round(float(key_quota_usd) * QUOTA_PER_UNIT)))
+    if key_expire_days is not None:
+        body["expired_time"] = int(time.time()) + int(key_expire_days) * 86400
+    if bind:
+        body["client_id"] = client_id()
+        body["client_name"] = client_label()
+
+    quota_desc = ("额度 %s 美元" % key_quota_usd) if key_quota_usd is not None else "不限额度"
+    expire_desc = ("%s 天后过期" % key_expire_days) if key_expire_days is not None else "永不过期"
+    bind_desc = "，绑定本机" if bind else ""
+    reporter.progress("正在创建「%s」（%s、%s%s）…" % (key_name, quota_desc, expire_desc, bind_desc))
+
+    dashboard_request("POST", "/token", headers, base=base, body=body)
     matches = [t for t in _list_tokens(base, headers, key_name)
                if isinstance(t, dict) and t.get("name") == key_name]
     if not matches:
@@ -1802,7 +1936,19 @@ def provision_api_key(base, access_token, user_id, key_name, reporter,
             "令牌已创建但按名字查不到（id 未知）",
             hint="到控制台 %s/console/token 查看名为「%s」的令牌，"
                  "或直接用 `--api-key` 粘贴它的 sk- key。" % (base, key_name))
-    return _fetch_token_key(base, headers, matches[0]["id"])
+    return _fetch_token_key(base, headers, matches[0]["id"]), matches[0]["id"]
+
+
+def revoke_token(base, headers, token_id, reporter):
+    """吊销指定令牌（换绑时清理旧 key）。失败不阻断新 key 的落盘。"""
+    try:
+        dashboard_request("DELETE", "/token/%s" % token_id, headers, base=base)
+        reporter.progress("已吊销旧令牌 id=%s" % token_id)
+        return True
+    except EasyAPIError as exc:
+        reporter.progress("旧令牌 id=%s 吊销失败（%s），请到控制台手动删除。"
+                          % (token_id, exc.message))
+        return False
 
 
 def _account_balance(base, access_token, user_id):
@@ -1821,20 +1967,39 @@ def _account_balance(base, access_token, user_id):
     return quota if isinstance(quota, (int, float)) else None
 
 
-def _save_key_and_verify(cfg, reporter, key, account_quota_usd=None):
-    """写入配置并立即验证，避免用户以为配好了其实不能用。"""
-    cfg["api_key"] = key
-    save_config(cfg)
-    reporter.progress("已写入 %s（权限 600）" % CONFIG_PATH)
+def _save_key_and_verify(cfg, reporter, key, account_quota_usd=None, token_id=None):
+    """先验证再落盘，避免用一个不可用的 key 覆盖现有配置。
+
+    认证/绑定失败（401/403）时不写盘：否则换绑失败会把原来能用的 key 冲掉。
+    网络抖动或 5xx 仍照常保存，只提示稍后用 quota 复查。
+    """
+    payload = None
+    human = []
     try:
         payload, human = _quota_report(cfg, key_override=key)
-        if account_quota_usd is not None:
-            payload["account_balance_usd"] = account_quota_usd
-            human.append("账号余额        %s（sk- key 查不到账号余额，登录时顺带查的）"
-                         % fmt_usd(account_quota_usd))
-        reporter.result(payload, ["API Key 配置完成，验证通过。"] + human)
     except EasyAPIError as exc:
-        raise EasyAPIError("key 已保存，但验证失败：%s" % exc.message, hint=exc.hint)
+        if getattr(exc, "status", None) in (401, 403):
+            raise EasyAPIError("新 key 未保存：%s" % exc.message, hint=exc.hint)
+        reporter.progress("警告：暂时无法验证 key（%s），仍会保存，稍后用 quota 复查。"
+                          % exc.message)
+
+    cfg["api_key"] = key
+    if token_id:
+        cfg["token_id"] = int(token_id)
+    else:
+        # --api-key 手动粘贴时不知道令牌 id：清掉旧的，避免以后 --rebind 吊销错令牌
+        cfg.pop("token_id", None)
+    save_config(cfg)
+    reporter.progress("已写入 %s（仅本机可读，key 不输出）" % CONFIG_PATH)
+    if account_quota_usd is not None:
+        payload = payload or {"ok": True}
+        payload["account_balance_usd"] = account_quota_usd
+        human.append("账号余额        %s（sk- key 查不到账号余额，登录时顺带查的）"
+                     % fmt_usd(account_quota_usd))
+    if payload is None:
+        payload = {"ok": True, "saved": True, "verified": False}
+    reporter.result(payload, ["API Key 配置完成。"] + human)
+    return 0
 
 
 # --------------------------------------------------------------------------
@@ -1868,21 +2033,41 @@ def cmd_login(args, reporter):
     who = login_data.get("username") or ("用户 %s" % login_data.get("id"))
     reporter.progress("登录成功：%s" % who)
 
+    # 换绑：设备指纹变了（换机/改主机名），旧 key 绑在别的指纹上。
+    # 新建一个带后缀的专用 key 并绑定本机，成功落盘后吊销旧 key。
+    key_name = args.key_name
+    create_new = args.create_new
+    if args.rebind:
+        key_name = "%s-%s" % (args.key_name, time.strftime("%m%d%H%M"))
+        create_new = True
+        reporter.progress("换绑模式：将新建「%s」并吊销本机配置里的旧令牌。" % key_name)
+
+    old_token_id = cfg.get("token_id") if cfg.get("api_key") else None
+
     # access_token 只在这一步使用：建/取 key、查账号余额，用完即丢，不写任何文件
-    key = provision_api_key(base, login_data["access_token"], login_data["id"],
-                            args.key_name, reporter,
-                            reuse=args.reuse_key, create_new=args.create_new)
+    key, token_id = provision_api_key(
+        base, login_data["access_token"], login_data["id"], key_name, reporter,
+        reuse=args.reuse_key, create_new=create_new,
+        bind=not args.no_bind,
+        key_quota_usd=args.key_quota, key_expire_days=args.key_expire_days)
     account_quota = _account_balance(base, login_data["access_token"], login_data["id"])
     account_usd = usd_from_quota(account_quota) if account_quota is not None else None
-    reporter.progress("已取得 API Key（%s…%s），只保存这个 key，登录令牌不落盘。"
-                      % (key[:6], key[-4:]))
-    _save_key_and_verify(cfg, reporter, key, account_quota_usd=account_usd)
+    reporter.progress("已取得 API Key，只保存这个 key，登录令牌不落盘。")
+    _save_key_and_verify(cfg, reporter, key, account_quota_usd=account_usd,
+                         token_id=token_id)
+
+    if args.rebind and old_token_id and str(old_token_id) != str(token_id):
+        revoke_token(base, dashboard_headers(login_data["access_token"],
+                                             login_data["id"]),
+                     old_token_id, reporter)
     return 0
 
 
 def cmd_logout(args, reporter):
     cfg = load_config()
     had = bool(cfg.pop("api_key", None))
+    # 令牌 id 只服务于 --rebind 的旧 key 吊销；key 都删了就别留着它
+    cfg.pop("token_id", None)
     save_config(cfg)
     reporter.result({"ok": True, "removed": had},
                     ["已从 %s 移除 api_key。" % CONFIG_PATH if had else "配置里本来就没有 api_key。"])
@@ -1924,7 +2109,8 @@ def cmd_config(args, reporter):
     base, pricing = resolve_bases(cfg)
     console = resolve_console_base(cfg)
     key, source = resolve_api_key(cfg, required=False)
-    masked = (key[:6] + "..." + key[-4:]) if key and len(key) > 12 else ("已设置" if key else None)
+    # 只报「有没有」，不输出任何 key 字符：打码片段一样会进对话记录
+    fingerprint = client_id()
 
     payload = {
         "config_path": CONFIG_PATH,
@@ -1933,6 +2119,8 @@ def cmd_config(args, reporter):
         "console_base": console,
         "api_key_set": bool(key),
         "api_key_source": source,
+        "token_id": cfg.get("token_id"),
+        "client_id_prefix": fingerprint[:12],
         "default_image_model": cfg.get("default_image_model"),
         "default_video_model": cfg.get("default_video_model"),
         "default_text_model": cfg.get("default_text_model"),
@@ -1944,7 +2132,8 @@ def cmd_config(args, reporter):
         "网关入口(API)   %s" % base,
         "定价入口        %s" % ("同网关入口" if pricing == base else pricing),
         "控制台(前端)    %s" % console,
-        "API Key         %s" % (masked + "（来自 %s）" % source if masked else "未配置"),
+        "API Key         %s" % ("已配置（来自 %s）" % source if key else "未配置"),
+        "设备指纹        %s…（令牌绑定的就是它，换机后会变）" % fingerprint[:12],
         "参考图模式      %s" % (cfg.get("ref_mode") or "auto（按模型家族自动选）"),
         "默认生图模型    %s" % (cfg.get("default_image_model") or "未设置"),
         "默认生视频模型  %s" % (cfg.get("default_video_model") or "未设置"),
@@ -1962,7 +2151,7 @@ def _quota_report(cfg, key_override=None):
     )
     if status != 200 or not isinstance(payload, dict) or not payload.get("data"):
         message, hint = translate_error(status, payload, text)
-        raise EasyAPIError("查询额度失败：%s" % message, hint=hint)
+        raise EasyAPIError("查询额度失败：%s" % message, hint=hint, status=status)
 
     data = payload["data"]
     granted = data.get("total_granted")
@@ -2039,6 +2228,9 @@ def cmd_env(args, reporter):
         "gateway_base": cfg.get("base_url") or DEFAULT_GATEWAY_BASE,
         "pricing_base": cfg.get("pricing_base") or cfg.get("base_url") or DEFAULT_PRICING_BASE,
         "key_configured": bool(cfg.get("api_key")),
+        "token_id": cfg.get("token_id"),
+        # 只给前缀：完整指纹能用来冒充本机，没必要整条输出
+        "client_id_prefix": client_id()[:12],
     }
 
     if args.network:
@@ -2067,6 +2259,7 @@ def cmd_env(args, reporter):
         "网关入口    %s" % info["gateway_base"],
         "定价入口    %s" % info["pricing_base"],
         "API Key     %s" % ("已配置" if info["key_configured"] else "未配置（配置后可用生图/生视频）"),
+        "设备指纹    %s…（令牌绑定用；换机后会变）" % info["client_id_prefix"],
         "内置快照    %s（%s 个模型）"
         % (info["snapshot_date"] or "日期未知", info["snapshot_models"]),
     ]
@@ -2292,6 +2485,130 @@ def cmd_schema(args, reporter):
         human.append("")
         human.extend("提示：" + n for n in notes)
     reporter.result(payload, human)
+    return 0
+
+
+NEED_PROPERTIES = {
+    "first-last-frame": ("input_references",),
+    "image-input": ("image", "images", "input_references"),
+    "audio": ("generate_audio",),
+}
+
+
+def _capabilities(props):
+    """从参数声明里读出能力标签（只是「声明了」，不代表画质好坏）。"""
+    caps = []
+    if not props:
+        return caps
+    if "input_references" in props:
+        caps.append("first-last-frame")
+    if "image" in props or "images" in props or "input_references" in props:
+        caps.append("image-input")
+    if "generate_audio" in props:
+        caps.append("audio")
+    return caps
+
+
+def _estimate_for(cfg, model, category, request, refresh=False):
+    """按最终请求体估算一次调用的费用。返回 (金额, 无法估算的原因)。"""
+    try:
+        entry, _src = find_model(cfg, model, category, refresh)
+        payload, _src = fetch_pricing(cfg, refresh)
+    except EasyAPIError:
+        return None, "无法获取定价信息"
+    if not entry:
+        return None, "模型不在当前分组的定价列表里"
+    group_ratio = ((payload.get("group_ratio") or {}).get("default") or 1)
+    seconds = request.get("duration")
+    if seconds is None:
+        seconds = request.get("seconds")
+    try:
+        seconds = int(seconds) if seconds is not None else None
+    except (TypeError, ValueError):
+        seconds = None
+    n = request.get("n")
+    try:
+        n = int(n) if n is not None else None
+    except (TypeError, ValueError):
+        n = None
+    return estimate_usd(entry, group_ratio, seconds=seconds,
+                        resolution=request.get("resolution"), n=n)
+
+
+def cmd_recommend(args, reporter):
+    """按能力和价格给出候选，不替用户拍板。
+
+    规则完全确定性：参数声明里有没有对应能力、预估价格升序。不是质量评测，
+    所以输出里只写「按能力与价格排序」，不编造画质结论。
+    """
+    cfg = load_config()
+    category = (args.category or "video").strip().lower()
+    rows, payload, source = models_by_category(cfg, category, args.refresh)
+    group_ratio = ((payload.get("group_ratio") or {}).get("default") or 1)
+
+    wants = [w.strip().lower() for w in (args.need or []) if w.strip()]
+    unknown = [w for w in wants if w not in NEED_PROPERTIES]
+    if unknown:
+        raise EasyAPIError(
+            "不认识的 --need：%s" % "、".join(unknown),
+            hint="可选值：%s" % "、".join(sorted(NEED_PROPERTIES)))
+
+    items = []
+    for row in rows:
+        name = row.get("model_name")
+        if not name:
+            continue
+        props, meta, _notes = resolve_schema(cfg, name, category, args.refresh)
+        caps = _capabilities(props)
+        if wants and not all(need in caps for need in wants):
+            continue
+        price, reason = estimate_usd(row, group_ratio,
+                                     seconds=args.seconds, resolution=args.resolution)
+        items.append({
+            "model": name,
+            "capabilities": caps,
+            "estimated_usd": price,
+            "estimate_unavailable_reason": reason,
+            "billing": billing_label(row),
+            "schema_source": meta.get("source"),
+            "description": row.get("description"),
+        })
+
+    priced = sorted(
+        (item for item in items if isinstance(item["estimated_usd"], (int, float))),
+        key=lambda item: item["estimated_usd"])
+    unpriced = [item for item in items if not isinstance(item["estimated_usd"], (int, float))]
+    ranked = (priced + unpriced)[: max(1, args.limit)]
+
+    result = {
+        "ok": bool(ranked),
+        "category": category,
+        "need": wants,
+        "estimate_assumptions": {"seconds": args.seconds, "resolution": args.resolution},
+        "source": source,
+        "items": ranked,
+        "recommended": ranked[0]["model"] if ranked else None,
+    }
+    if not ranked:
+        result["note"] = ("没有同时满足能力与定价的模型；去掉 --need 或换 --category 再试。")
+        reporter.result(result, [result["note"]])
+        return 0
+
+    if args.json:
+        reporter.result(result, [])
+        return 0
+
+    human = ["%s 候选（按能力与价格排序；估算假设 %s 秒 / %s）"
+             % (category, args.seconds, args.resolution)]
+    for index, item in enumerate(ranked, 1):
+        caps = "、".join(item["capabilities"]) or "—"
+        human.append("%d. %-24s %-10s 能力：%s"
+                     % (index, item["model"], fmt_usd(item["estimated_usd"]), caps))
+        if item.get("description"):
+            human.append("   %s" % item["description"])
+    human.append("")
+    human.append("推荐：%s（价格最低且满足能力要求；不是画质排名）" % result["recommended"])
+    reporter.result(result, human)
     return 0
 
 
@@ -2598,12 +2915,15 @@ def cmd_image(args, reporter):
         return shape
 
     if args.dry_run:
+        estimate, estimate_reason = _estimate_for(cfg, model, "image", clean, args.refresh)
         detail = [
             "DRY RUN — 未发送请求，无需 API Key。",
             "地址  %s" % (base + endpoint),
         ]
         if ref_mode:
             detail.append("参考图投递  %s" % REF_MODE_LABEL[ref_mode])
+        detail.append("预估费用  %s" % (fmt_usd(estimate) if estimate is not None
+                                       else "无法估算（%s）" % estimate_reason))
         detail += ["请求体：", json.dumps(summarize_shape(), ensure_ascii=False, indent=2)]
         detail += (["", "提示："] + ["  - " + n for n in notes + warnings]
                    if notes or warnings else [])
@@ -2612,6 +2932,7 @@ def cmd_image(args, reporter):
             "endpoint": endpoint, "url": base + endpoint, "ref_mode": ref_mode,
             "ref_files": [n for n, _d in ref_files],
             "schema_source": meta.get("source"),
+            "estimate_usd": estimate, "estimate_reason": estimate_reason,
             "request": summarize_shape(), "notes": notes, "warnings": warnings,
         }, detail)
         return 0
@@ -2849,14 +3170,23 @@ def cmd_video(args, reporter):
     endpoint, endpoints = resolve_submit_endpoint(cfg, model, "video", meta, args.refresh)
     timeout = resolve_timeout(args, DEFAULT_VIDEO_TIMEOUT)
     if args.dry_run:
+        estimate, estimate_reason = _estimate_for(cfg, model, "video", clean, args.refresh)
+        effective = {key: clean.get(key) for key in
+                     ("duration", "resolution", "aspect_ratio", "size", "generate_audio")
+                     if clean.get(key) is not None}
         reporter.result({
             "ok": True, "dry_run": True, "command": "video", "model": model,
             "endpoint": endpoint, "url": base + endpoint,
             "schema_source": meta.get("source"),
+            "estimate_usd": estimate, "estimate_reason": estimate_reason,
+            "effective_params": effective,
             "request": clean, "notes": notes, "warnings": warnings,
         }, [
             "DRY RUN — 未发送请求，无需 API Key。",
             "地址  %s" % (base + endpoint),
+            "生效参数  %s" % (", ".join("%s=%s" % kv for kv in effective.items()) or "（无，交给上游默认）"),
+            "预估费用  %s" % (fmt_usd(estimate) if estimate is not None
+                              else "无法估算（%s）" % estimate_reason),
             "请求体：",
             json.dumps(clean, ensure_ascii=False, indent=2),
         ] + (["", "提示："] + ["  - " + n for n in notes + warnings] if notes or warnings else []))
@@ -3076,6 +3406,14 @@ def build_parser():
                    help="复用账号下已有的某个令牌，而不是新建（配合报错里的列表）")
     p.add_argument("--create-new", action="store_true",
                    help="即使账号下已有其它令牌，也新建一个专用令牌")
+    p.add_argument("--no-bind", action="store_true",
+                   help="新建令牌时不绑定本机设备指纹（默认绑定）")
+    p.add_argument("--rebind", action="store_true",
+                   help="换绑：新建绑定本机的令牌，并吊销配置里的旧令牌")
+    p.add_argument("--key-quota", type=float, metavar="USD",
+                   help="新建令牌的额度上限（美元）；不填则不限额度")
+    p.add_argument("--key-expire-days", type=int, metavar="N",
+                   help="新建令牌的有效天数；不填则永不过期")
     p.set_defaults(func=cmd_login)
 
     p = sub.add_parser("logout", help="移除已保存的 API Key")
@@ -3116,6 +3454,16 @@ def build_parser():
     p.add_argument("model", help="模型名，如 seedream-4.5")
     p.add_argument("--category", help="参数分类：image / video / text（默认按模型分类推断）")
     p.set_defaults(func=cmd_schema)
+
+    p = sub.add_parser("recommend", help="按能力与价格给出候选模型（匿名可访问）",
+                       parents=[common])
+    p.add_argument("--category", default="video", help="分类，默认 video")
+    p.add_argument("--need", action="append",
+                   help="能力要求，可重复：first-last-frame / image-input / audio")
+    p.add_argument("--seconds", type=int, default=5, help="按秒计费模型的估算时长（默认 5）")
+    p.add_argument("--resolution", default="720p", help="估算用的分辨率（默认 720p）")
+    p.add_argument("--limit", type=int, default=3, help="返回候选数量（默认 3）")
+    p.set_defaults(func=cmd_recommend)
 
     p = sub.add_parser("compare", help="按价格对比模型（匿名可访问）", parents=[common])
     p.add_argument("models", nargs="*", help="要对比的模型名；留空则对比整个分类")

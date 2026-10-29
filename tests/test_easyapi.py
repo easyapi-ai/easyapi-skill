@@ -488,7 +488,7 @@ class MockGateway:
                  wrong_host=False, users=None, tokens=None, require_2fa=False,
                  max_tokens=False, captcha=False, two_fa_code="123456",
                  cli_auth_enabled=True, schema_bundle=None, schema_single=None,
-                 detail_models=None):
+                 detail_models=None, pricing_rows=None):
         self.poll_sequence = list(poll_sequence)
         self.download_ok = download_ok
         self.wrong_host = wrong_host
@@ -504,8 +504,14 @@ class MockGateway:
         self.schema_single = dict(schema_single or {})
         # None = 任何模型都返回同一份详情；给定集合时只对这些模型返回，其余 404
         self.detail_models = None if detail_models is None else set(detail_models)
+        # /pricing 的模型行；默认一个按秒计费的视频模型
+        self.pricing_rows = pricing_rows or [{"model_name": "mock-video", "category": "Video",
+                                              "quota_type": 2, "model_ratio": 0.1,
+                                              "video_per_second_ratios": {"720p": 1}}]
         self.cli_tickets = {}
         self.created_tokens = []
+        self.token_bodies = []    # POST /token 的请求体，用于断言设备绑定/额度
+        self.deleted_tokens = []  # DELETE /token/:id 的 id
         self.requests = []
         self.raw_requests = []   # [(path, headers, raw_bytes)]，用于断言 multipart 结构
         self.polls = 0
@@ -609,9 +615,7 @@ class MockGateway:
                     return self._send(200, {
                         "success": True, "pricing_version": "v-test",
                         "group_ratio": {"default": 1}, "vendors": [],
-                        "data": [{"model_name": "mock-video", "category": "Video",
-                                  "quota_type": 2, "model_ratio": 0.1,
-                                  "video_per_second_ratios": {"720p": 1}}],
+                        "data": gateway.pricing_rows,
                     })
                 if self.path.startswith("/v1/videos/"):
                     if self.path.endswith("/content"):
@@ -685,10 +689,12 @@ class MockGateway:
                     if gateway.max_tokens:
                         return self._send(200, {"success": False,
                                                 "message": "已达到最大令牌数量限制 (10)"})
+                    gateway.token_bodies.append(body)
                     new_id = 1000 + len(gateway.tokens)
                     raw_key = "raw" + "a1b2c3d4e5f6a7b8c9d0" * 2 + "end"
                     gateway.tokens.append({"id": new_id, "name": body.get("name"),
-                                           "status": 1, "key": raw_key})
+                                           "status": 1, "key": raw_key,
+                                           "client_id": body.get("client_id") or ""})
                     gateway.created_tokens.append(body.get("name"))
                     return self._send(200, {"success": True, "message": ""})
 
@@ -739,6 +745,15 @@ class MockGateway:
 
                 if self.path == "/v1/videos":
                     return self._send(200, {"id": "task-123", "status": "queued"})
+                return self._send(404, {"message": "not found"})
+
+            def do_DELETE(self):
+                gateway.requests.append(("DELETE", self.path))
+                if self.path.startswith("/token/"):
+                    token_id = int(self.path.split("/")[2])
+                    gateway.deleted_tokens.append(token_id)
+                    gateway.tokens = [t for t in gateway.tokens if t["id"] != token_id]
+                    return self._send(200, {"success": True, "message": ""})
                 return self._send(404, {"message": "not found"})
 
         self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -1996,6 +2011,146 @@ class TestDistributionSync(unittest.TestCase):
 
     def test_skill_requires_launcher(self):
         self.assertTrue(os.path.isfile(os.path.join(SKILL_DIR, "bin", "easyapi")))
+
+
+# ---------------------------------------------------------------------------
+# 6. 安全与交互：设备绑定、key 输出、登录参数、候选模型
+# ---------------------------------------------------------------------------
+
+
+class TestDeviceBindingUnits(unittest.TestCase):
+    def test_fingerprint_is_stable_hex(self):
+        parts = ["machine-guid", "windows", "amd64"]
+        first = mod._fingerprint_from(parts)
+        self.assertEqual(first, mod._fingerprint_from(parts))
+        self.assertEqual(len(first), 64)
+        self.assertTrue(all(c in "0123456789abcdef" for c in first))
+        self.assertNotEqual(first, mod._fingerprint_from(["other", "windows", "amd64"]))
+
+    def test_process_cache_keeps_one_value(self):
+        self.assertEqual(mod.client_id(), mod.client_id())
+
+    def test_client_header_only_on_authenticated_requests(self):
+        with_auth = mod.with_client_header({"Authorization": "Bearer sk-x"})
+        self.assertEqual(with_auth[mod.CLIENT_ID_HEADER], mod.client_id())
+        anonymous = mod.with_client_header({"Accept": "application/json"})
+        self.assertNotIn(mod.CLIENT_ID_HEADER, anonymous)
+
+    def test_binding_mismatch_has_rebind_hint(self):
+        message, hint = mod.translate_error(403, {
+            "error": {"code": "client_binding_mismatch", "message": "bound"}}, "")
+        self.assertIn("rebind", hint)
+        self.assertIn("另一台设备", hint)
+
+
+class TestKeyOutputHygiene(IntegrationBase):
+    def test_config_never_prints_key_fragments(self):
+        key = "sk-abcdef1234567890wxyz"
+        proc = self.run_cli("config", key=key)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("已配置", proc.stdout)
+        self.assertNotIn("sk-abc", proc.stdout, "key 前 6 位也不能进对话")
+        self.assertNotIn("wxyz", proc.stdout, "key 后 4 位也不能进对话")
+
+
+class TestLoginBinding(IntegrationBase):
+    STDIN = "user@example.com\nsecret-pass\n"
+
+    def test_new_key_is_bound_and_quota_can_be_capped(self):
+        self.gateway = MockGateway().start()
+        proc = self.run_login(self.gateway, self.STDIN,
+                              "--key-quota", "5", "--key-expire-days", "90")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        body = self.gateway.token_bodies[0]
+        self.assertEqual(len(body["client_id"]), 64)
+        self.assertTrue(body["client_name"])
+        self.assertFalse(body["unlimited_quota"])
+        self.assertEqual(body["remain_quota"], 5 * mod.QUOTA_PER_UNIT)
+        self.assertGreater(body["expired_time"], time.time())
+        self.assertEqual(self.read_config()["token_id"], 1000)
+
+    def test_no_bind_omits_client_id(self):
+        self.gateway = MockGateway().start()
+        proc = self.run_login(self.gateway, self.STDIN, "--no-bind")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertNotIn("client_id", self.gateway.token_bodies[0])
+
+    def test_rebind_creates_new_key_and_revokes_old(self):
+        self.gateway = MockGateway().start()
+        with open(os.path.join(self.home, "config.json"), "w", encoding="utf-8") as fh:
+            json.dump({"api_key": "sk-oldkeyoldkeyoldkey", "token_id": 999}, fh)
+
+        proc = self.run_login(self.gateway, self.STDIN, "--rebind")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        names = [body["name"] for body in self.gateway.token_bodies]
+        self.assertTrue(names and names[0].startswith("easyapi-skill-"),
+                        "换绑必须新建带后缀的专用 key，不能复用旧的同名 key")
+        self.assertIn(999, self.gateway.deleted_tokens, "旧 key 必须吊销")
+        self.assertEqual(self.read_config()["token_id"], 1000)
+
+
+class TestRecommend(IntegrationBase):
+    BUNDLE = {
+        "items": [
+            {"model": "cheap-t2v", "category": "video", "endpoints": [],
+             "request": {"type": "object", "properties": {"prompt": {"type": "string"}}}},
+            {"model": "frame-i2v", "category": "video", "endpoints": [],
+             "request": {"type": "object", "properties": {
+                 "prompt": {"type": "string"},
+                 "input_references": {"type": "array"}}}},
+            {"model": "audio-i2v", "category": "video", "endpoints": [],
+             "request": {"type": "object", "properties": {
+                 "prompt": {"type": "string"},
+                 "input_references": {"type": "array"},
+                 "generate_audio": {"type": "boolean"}}}},
+        ],
+        "pricing_version": "v-test", "schema_version": "v-test",
+    }
+
+    def _gateway(self):
+        rows = [
+            {"model_name": "cheap-t2v", "category": "Video", "quota_type": 2,
+             "model_ratio": 0.1, "video_per_second_ratios": {"720p": 1}},
+            {"model_name": "frame-i2v", "category": "Video", "quota_type": 2,
+             "model_ratio": 0.2, "video_per_second_ratios": {"720p": 1}},
+            {"model_name": "audio-i2v", "category": "Video", "quota_type": 2,
+             "model_ratio": 0.3, "video_per_second_ratios": {"720p": 1}},
+        ]
+        return MockGateway(schema_bundle=self.BUNDLE, pricing_rows=rows).start()
+
+    def test_filters_by_capability_and_orders_by_price(self):
+        self.gateway = self._gateway()
+        proc = self.run_cli("recommend", "--category", "video",
+                            "--need", "first-last-frame", "--json",
+                            gateway=self.gateway, key=None)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        models = [item["model"] for item in payload["items"]]
+        self.assertNotIn("cheap-t2v", models, "没有 input_references 的模型要被过滤")
+        self.assertEqual(models[0], "frame-i2v")
+        self.assertEqual(payload["recommended"], "frame-i2v")
+        self.assertLess(payload["items"][0]["estimated_usd"],
+                        payload["items"][1]["estimated_usd"])
+
+    def test_audio_need_only_matches_models_declaring_it(self):
+        self.gateway = self._gateway()
+        proc = self.run_cli("recommend", "--category", "video",
+                            "--need", "audio", "--json",
+                            gateway=self.gateway, key=None)
+        payload = json.loads(proc.stdout)
+        self.assertEqual([item["model"] for item in payload["items"]], ["audio-i2v"])
+
+
+class TestDryRunEstimate(IntegrationBase):
+    def test_video_dry_run_reports_estimate_and_effective_params(self):
+        self.gateway = MockGateway().start()
+        proc = self.run_cli("video", "--model", "mock-video", "--prompt", "x",
+                            "--dry-run", "--json", gateway=self.gateway)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertIsNotNone(payload["estimate_usd"])
+        self.assertIn("duration", payload["effective_params"])
+        self.assertIn("resolution", payload["effective_params"])
 
 
 if __name__ == "__main__":

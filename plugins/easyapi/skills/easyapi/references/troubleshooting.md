@@ -9,6 +9,7 @@
 | `401` | Key 无效 / 未提供 | 跑 `"$EASYAPI_SKILL_DIR/bin/easyapi" quota` 自检；或重新 `login` |
 | `402` | 额度不足 | 引导充值；`"$EASYAPI_SKILL_DIR/bin/easyapi" quota` 看余额 |
 | `403` | 无权访问该模型 | 令牌未开通该模型或分组不匹配；`"$EASYAPI_SKILL_DIR/bin/easyapi" models` 看可见模型 |
+| `403` + `client_binding_mismatch` | key 绑定在另一台设备上 | `login --browser --rebind` 换绑（新建并吊销旧 key），不要重试或换着试 |
 | `404` | 模型不存在或对当前分组不可见 | `"$EASYAPI_SKILL_DIR/bin/easyapi" models` 确认模型名；注意大小写（`Kling-3.0` 不是 `kling-3.0`） |
 | `429` | 限流 | 稍后重试 |
 | `400` / `422` | 参数被上游拒绝 | 见下 |

@@ -81,6 +81,17 @@ npx skills remove easyapi
 - 自动创建的 key 不限额度、永不过期（额度受账号余额约束），重复登录复用同一个，
   不堆积；随时可在控制台 `/console/token` 改名、限额或删除。
 
+### 设备绑定（新建 key 默认开启）
+
+新建的 key 会绑定**本机设备指纹**：指纹由 Windows `MachineGuid` / Linux `machine-id` /
+macOS `IOPlatformUUID` 现算（取不到才退回 MAC + 主机名），**不写进配置文件**。所以：
+
+- 配置文件被拷到别的机器 → key 用不了（`client_binding_mismatch`）；
+- 换机、改主机名、还原系统 → 同一台机器也可能变，用 `login --browser --rebind` 换绑：
+  新建一个绑定本机的 key，并在落盘后吊销旧 key；
+- 复用已有令牌（`--reuse-key`）**不会**改绑定——它可能还在别的脚本/机器上用；
+- 要在多台机器用，就分别登录各建一个 key；不想要绑定用 `--no-bind`。
+
 ## 快速验证
 
 ```bash
@@ -105,6 +116,7 @@ E=~/.agents/skills/easyapi/bin/easyapi
 | `models [--category image\|video\|text] [--search 关键词]` | 列可用模型 |
 | `schema <模型名>` | 参数定义 + 提交端点 + 示例请求体 |
 | `compare [模型...] [--category X] [--seconds N] [--resolution R]` | 比价与选型 |
+| `recommend --category video --need first-last-frame` | 按能力 + 价格给 3 个候选 |
 | `image --prompt "..."` | 生图 |
 | `video --prompt "..."` | 生视频（自动轮询到完成并下载） |
 | `chat --prompt "..."` | 文本 / 多模态对话 |
@@ -124,7 +136,7 @@ E=~/.agents/skills/easyapi/bin/easyapi
 
 ```
 ~/.easyapi/
-├── config.json          # key、base_url、默认模型（权限 600）
+├── config.json          # key、token_id、base_url、默认模型（权限 600）
 └── cache/
     ├── pricing.json     # 模型列表（默认缓存 24 小时）
     ├── schemas.json     # 全量参数 schema（/pricing/schema?all=1）
@@ -133,6 +145,18 @@ E=~/.agents/skills/easyapi/bin/easyapi
 ```
 
 `pricing_version` 变化时，`detail/`、`schema/`、`schemas.json` 会一起作废。
+
+## 安全模型
+
+- key **明文**存在 `~/.easyapi/config.json`（权限位 600；Windows 上 chmod 不生效，
+  实际由用户目录 ACL 保护），等价于 `~/.aws/credentials`。也可以只用 `EASYAPI_API_KEY`
+  环境变量，优先级更高。
+- key **不进命令行参数**（避免 shell history / 进程列表），输出里**不出现任何 key 字符**
+  （包括打码片段）。
+- 新建 key 默认绑定本机设备指纹；指纹每次现算、不落盘，所以配置泄漏到别的机器无法直接使用。
+- 浏览器授权票据一次性、120 秒、仅允许回环回调；登录用的 access_token 只在内存里用一次。
+- **防不了什么**：同机恶意软件（能读 key 也能读设备信息）、或用户主动把 key + 指纹一起交出去。
+  要限制损失，用 `login --browser --key-quota 20 --key-expire-days 90` 给 key 设上限与有效期。
 
 配置**不在 skill 目录里** —— skill 目录可能只读，插件缓存更新时还会被整体替换。
 
@@ -182,6 +206,8 @@ easyapi.py config --console-base https://your-console.example.com
 - **按量计费模型无法本地估算价格**，只能给倍率做横向参考。
 - **预估价格不含折扣**，仅用于横向比较；实际金额以平台扣费为准。
 - **图片异步任务（`/v1/images/tasks`）未接入**，脚本只用同步的 generations/edits。
+- **设备绑定只防「配置被拷走」**：同机进程仍能读 key 并算出同一指纹；换机/改主机名需要
+  `login --rebind`。需要多机并发就各建一个 key。
 
 ## 目录结构
 
@@ -207,7 +233,7 @@ easyapi-skill/                              ← 市场根目录（ZCode 添加�
 │               └── scripts/easyapi.py      仅标准库
 ├── tools/build_snapshot.py                 重新生成参数快照（--from-api / --docs）
 ├── tools/sync_dist.py                      生成 / 校验 skills/easyapi 副本
-└── tests/test_easyapi.py                   159 个用例（含打包、重定位、分发漂移）
+└── tests/test_easyapi.py                   170 个用例（含打包、重定位、分发漂移、绑定）
 ```
 
 插件规范要求技能放在 `skills/<name>/SKILL.md`，所以源在插件目录里；仓库根的

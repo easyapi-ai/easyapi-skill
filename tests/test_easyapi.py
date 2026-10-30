@@ -12,6 +12,7 @@
 """
 
 import base64
+import hashlib
 import http.server
 import importlib.util
 import json
@@ -491,7 +492,7 @@ class MockGateway:
                  wrong_host=False, users=None, tokens=None, require_2fa=False,
                  max_tokens=False, captcha=False, two_fa_code="123456",
                  cli_auth_enabled=True, schema_bundle=None, schema_single=None,
-                 detail_models=None, pricing_rows=None):
+                 detail_models=None, pricing_rows=None, cli_poll_enabled=False):
         self.poll_sequence = list(poll_sequence)
         self.download_ok = download_ok
         self.wrong_host = wrong_host
@@ -502,6 +503,8 @@ class MockGateway:
         self.captcha = captcha
         self.two_fa_code = two_fa_code
         self.cli_auth_enabled = cli_auth_enabled
+        # False = 老后端：没有 /cli/session 与 /cli/ticket，CLI 必须回退 loopback
+        self.cli_poll_enabled = cli_poll_enabled
         # /pricing/schema 的两个模式：None 表示老部署（路由不存在 -> 404）
         self.schema_bundle = schema_bundle
         self.schema_single = dict(schema_single or {})
@@ -512,6 +515,8 @@ class MockGateway:
                                               "quota_type": 2, "model_ratio": 0.1,
                                               "video_per_second_ratios": {"720p": 1}}]
         self.cli_tickets = {}
+        self.cli_sessions = {}   # state -> {"verifier_hash": ...}
+        self.cli_pending = {}    # state -> ticket（授权后、等 CLI 取走）
         self.created_tokens = []
         self.token_bodies = []    # POST /token 的请求体，用于断言设备绑定/额度
         self.deleted_tokens = []  # DELETE /token/:id 的 id
@@ -555,6 +560,25 @@ class MockGateway:
                         "aliyun_captcha_enabled": False,
                         "cli_authorize": gateway.cli_auth_enabled,
                     }})
+                if self.path.startswith("/cli/ticket"):
+                    # 轮询取票；老后端整条路由不存在（404），CLI 据此回退 loopback
+                    if not gateway.cli_poll_enabled:
+                        return self._send(404, {"error": {"message": "Invalid URL (GET %s)" % self.path}})
+                    from urllib.parse import urlparse, parse_qs
+                    query = parse_qs(urlparse(self.path).query)
+                    state = (query.get("state") or [""])[0]
+                    verifier = (query.get("verifier") or [""])[0]
+                    session = gateway.cli_sessions.get(state)
+                    if session is None:
+                        return self._send(200, {"success": False,
+                                                "message": "授权会话不存在或已过期，请回到命令行重新发起登录"})
+                    if hashlib.sha256(verifier.encode("utf-8")).hexdigest() != session["verifier_hash"]:
+                        return self._send(200, {"success": False, "message": "verifier 校验失败"})
+                    ticket = gateway.cli_pending.get(state)
+                    if not ticket:
+                        return self._send(200, {"success": True, "data": {"status": "pending"}})
+                    return self._send(200, {"success": True,
+                                            "data": {"status": "ready", "ticket": ticket}})
                 if self.path.startswith("/cli/authorize"):
                     # 授权页是前端路由（GET 返回 HTML），与 API 的 POST /cli/authorize 同路径
                     if not gateway.cli_auth_enabled:
@@ -709,6 +733,16 @@ class MockGateway:
                                                     "data": {"key": t["key"]}})
                     return self._send(200, {"success": False, "message": "令牌不存在"})
 
+                if self.path == "/cli/session":
+                    # 轮询模式：CLI 先登记会话，授权页签票时按 state 挂进待取区
+                    if not gateway.cli_poll_enabled:
+                        return self._send(404, {"error": {"message": "Invalid URL (POST %s)" % self.path}})
+                    gateway.cli_sessions[body.get("state") or ""] = {
+                        "verifier_hash": body.get("verifier_hash") or "",
+                        "client_name": body.get("client_name"),
+                    }
+                    return self._send(200, {"success": True, "data": {"expires_in": 600}})
+
                 if self.path == "/cli/authorize":
                     # 模拟网关：未部署授权端点时整体 404（与真实 gin 行为一致）
                     if not gateway.cli_auth_enabled:
@@ -717,17 +751,27 @@ class MockGateway:
                     auth = self.headers.get("Authorization") or ""
                     if auth != "Bearer dash-access-token" or self.headers.get("EasyAPI-User") != "42":
                         return self._send(401, {"success": False, "message": "未登录"})
+                    state = body.get("state") or ""
                     redirect_uri = body.get("redirect_uri") or ""
-                    host = urllib.parse.urlparse(redirect_uri).hostname
-                    if not redirect_uri.startswith("http://") or host not in (
-                            "127.0.0.1", "localhost", "::1"):
+                    if redirect_uri:
+                        host = urllib.parse.urlparse(redirect_uri).hostname
+                        if not redirect_uri.startswith("http://") or host not in (
+                                "127.0.0.1", "localhost", "::1"):
+                            return self._send(200, {"success": False,
+                                                    "message": "redirect_uri 仅允许本机回环地址"})
+                    elif state not in gateway.cli_sessions:
+                        # 轮询模式必须先有会话，否则票没有取件人
                         return self._send(200, {"success": False,
-                                                "message": "redirect_uri 仅允许本机回环地址"})
+                                                "message": "授权会话不存在或已过期，请回到命令行重新发起登录"})
                     ticket = "tkt" + secrets.token_hex(12)
                     gateway.cli_tickets[ticket] = {
                         "user_id": 42,
                         "client_name": body.get("client_name") or "EasyAPI CLI",
                     }
+                    if not redirect_uri:
+                        gateway.cli_pending[state] = ticket
+                        return self._send(200, {"success": True, "data": {
+                            "ticket": ticket, "expires_in": 120}})
                     return self._send(200, {"success": True, "data": {
                         "ticket": ticket, "redirect_uri": redirect_uri,
                         "expires_in": 120}})
@@ -2222,6 +2266,22 @@ class TestAuthorizeUrlAndCallbackPage(unittest.TestCase):
             "https://www.easyapi.com", "http://127.0.0.1:9000/callback",
             "state-1", "EasyAPI CLI", manual=False))
 
+    def test_poll_url_omits_redirect_uri(self):
+        """轮询模式的授权页地址只带 state：带了回调地址前端就会回跳本机。"""
+        url = mod.build_authorize_url("https://www.easyapi.com", None,
+                                      "state-1", "EasyAPI CLI")
+        params = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
+        self.assertNotIn("redirect_uri", params)
+        self.assertEqual(params["state"], "state-1")
+        self.assertEqual(params["client_name"], "EasyAPI CLI")
+
+    def test_verifier_hash_is_sha256_hex(self):
+        # 后端只认 64 位小写十六进制；大小写或长度错了整条轮询都取不到票
+        digest = mod._cli_verifier_hash("verifier-x")
+        self.assertEqual(len(digest), 64)
+        self.assertEqual(digest, digest.lower())
+        self.assertEqual(digest, hashlib.sha256(b"verifier-x").hexdigest())
+
     def test_callback_ok_page_offers_website_redirect(self):
         html = mod._callback_ok_html()
         self.assertIn("授权成功", html)
@@ -2250,6 +2310,89 @@ class TestLoginFastPath(IntegrationBase):
         self.assertFalse(any(r[0] == "POST" and r[1] == "/token" for r in self.gateway.requests),
                          "key 可用时不该再新建令牌")
         self.assertEqual(self.read_config()["api_key"], "sk-alreadyconfigured")
+
+
+class TestBrowserLoginPollFlow(TestBrowserLoginFlow):
+    """轮询模式（默认）：授权页不回跳，CLI 自己取票。
+
+    这是「授权成功后不跳本地页面」的核心链路：
+    登记会话（/cli/session）→ 页面授权（不带 redirect_uri）→ CLI 轮询（/cli/ticket）。
+    """
+
+    def complete_poll_authorization(self, gateway, authorize_url):
+        parsed = urllib.parse.urlparse(authorize_url)
+        params = dict(urllib.parse.parse_qsl(parsed.query))
+        assert "redirect_uri" not in params, params
+
+        # 模拟授权页：持登录态签票，请求里不带回调地址
+        status, payload, _ = mod.http_json(
+            "POST", gateway.base_url + "/cli/authorize",
+            headers={"Authorization": "Bearer dash-access-token", "EasyAPI-User": "42"},
+            body={"client_name": params.get("client_name", ""),
+                  "state": params.get("state", "")})
+        assert status == 200 and payload.get("success"), payload
+        return payload["data"]["ticket"]
+
+    def test_poll_login_completes_without_local_callback(self):
+        self.gateway = MockGateway(cli_poll_enabled=True).start()
+        seen = []
+
+        def on_stderr(text):
+            url = self.authorize_url_from_output(text)
+            if url and not seen:
+                seen.append(url)
+                self.complete_poll_authorization(self.gateway, url)
+
+        proc = self.run_browser_login(self.gateway, on_stderr=on_stderr)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+        self.assertTrue(seen, "必须打印授权页地址供无浏览器环境使用")
+        self.assertNotIn("redirect_uri", seen[0], "轮询模式不该带回调地址：%s" % seen[0])
+        self.assertIn("state=", seen[0])
+        # 后端确实走了「登记会话 → 页面授权 → 主动取票」三步
+        paths = [r[1] for r in self.gateway.requests]
+        self.assertIn("/cli/session", paths)
+        self.assertTrue(any(p.startswith("/cli/ticket") for p in paths), paths)
+
+        cfg = self.read_config()
+        self.assertTrue(cfg["api_key"].startswith("sk-"))
+        self.assertEqual(self.gateway.created_tokens, ["easyapi-skill"])
+        raw = open(os.path.join(self.home, "config.json"), encoding="utf-8").read()
+        self.assertNotIn("dash-access-token", raw)
+
+    def test_old_backend_falls_back_to_loopback(self):
+        """后端还没有 /cli/session 时不能直接失败：老部署的用户仍要能登录。"""
+        self.gateway = MockGateway(cli_poll_enabled=False).start()
+        seen = []
+
+        def on_stderr(text):
+            url = self.authorize_url_from_output(text)
+            if url and not seen:
+                seen.append(url)
+                self.complete_authorization(self.gateway, url)
+
+        proc = self.run_browser_login(self.gateway, on_stderr=on_stderr)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("回退到本机回调", proc.stderr)
+        self.assertTrue(seen)
+        self.assertIn("redirect_uri=http%3A%2F%2F127.0.0.1%3A", seen[0])
+
+    def test_loopback_flag_forces_old_flow(self):
+        """--loopback 明确要求旧流程时，不该再去登记会话。"""
+        self.gateway = MockGateway(cli_poll_enabled=True).start()
+        seen = []
+
+        def on_stderr(text):
+            url = self.authorize_url_from_output(text)
+            if url and not seen:
+                seen.append(url)
+                self.complete_authorization(self.gateway, url)
+
+        proc = self.run_browser_login(self.gateway, "--loopback", on_stderr=on_stderr)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertTrue(seen)
+        self.assertIn("redirect_uri=http%3A%2F%2F127.0.0.1%3A", seen[0])
+        self.assertNotIn("/cli/session", [r[1] for r in self.gateway.requests])
 
 
 if __name__ == "__main__":

@@ -84,9 +84,12 @@ TOKEN_STATUS_ENABLED = 1
 # 提前探测出来可以直接指路，而不是让用户对着一个莫名的 403 猜。
 CAPTCHA_CONFIG_KEYS = ("turnstile_check", "aliyun_captcha_enabled")
 
-# 浏览器授权（loopback）
+# 浏览器授权（默认轮询取票；--loopback / --manual 走旧的本机回调）
 DEFAULT_CLIENT_NAME = "EasyAPI CLI"
 AUTH_CALLBACK_WAIT = 300       # 等用户在浏览器里点授权的最长时间
+# 轮询间隔 2s ≈ 30 次/分，低于网关 CriticalRateLimit（默认 100 次/分）并留出共享余量
+CLI_POLL_INTERVAL = 2.0
+CLI_POLL_BACKOFF = 8.0         # 被限流（429）时退避，等限流窗口滑过
 
 # 浏览器授权的本地回调页。纯内联 HTML/CSS/JS：它是 127.0.0.1 上的临时页面，
 # 不能依赖任何外部资源（离线、内网、CDN 被墙都要能用）。
@@ -1853,34 +1856,119 @@ def _check_authorize_page(console_base):
 def build_authorize_url(console, redirect_uri, state, client_name, manual=False):
     """拼授权页地址。
 
+    redirect_uri 为空 = 轮询模式（免回跳）：页面只带 state，票据由本脚本主动取；
+    带上回环地址 = loopback 模式，票据由浏览器回跳交给本机监听。
+
     manual=1 让页面关闭自动回跳：跨机器授权时 127.0.0.1 在用户浏览器上是死地址，
     跳过去会把还没复制的一次性授权码一起带走。
     """
     params = {
-        "redirect_uri": redirect_uri,
         "state": state,
         "client_name": client_name,
     }
+    if redirect_uri:
+        params["redirect_uri"] = redirect_uri
     if manual:
         params["manual"] = "1"
     return "%s/cli/authorize?%s" % (console.rstrip("/"), urllib.parse.urlencode(params))
 
 
-def _browser_login(base, reporter, client_name, manual=False, console_base=None):
-    """浏览器授权登录：起本地监听 → 开授权页 → 拿一次性授权码 → 换登录态。
+def _cli_verifier_hash(verifier):
+    return hashlib.sha256(verifier.encode("utf-8")).hexdigest()
 
-    授权页是**前端路由**（控制台域），票据兑换是**网关 API**（网关域）——
-    两个域名必须分开用，混用会打到只接受 POST 的 API 路由上。
+
+def _response_message(payload, text, status):
+    """从网关响应里取一条可读错误信息（网关习惯 HTTP 200 + success:false）。"""
+    if isinstance(payload, dict):
+        message = str(payload.get("message") or "").strip()
+        if message:
+            return message
+        error = payload.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return str(error["message"]).strip()
+    return (text or "").strip()[:300] or ("HTTP %s" % status)
+
+
+def _cli_register_session(base, state, verifier, client_name):
+    """登记一次轮询授权会话。返回 True；后端过旧（无此端点）返回 False，由调用方回退。
+
+    只把 verifier 的 SHA-256 交给后端：state 会出现在浏览器地址栏与访问日志里，
+    单独拿到它不足以取票。
+    """
+    status, payload, text = http_json(
+        "POST", base + "/cli/session",
+        body={
+            "state": state,
+            "verifier_hash": _cli_verifier_hash(verifier),
+            "client_name": client_name,
+        },
+        timeout=20)
+    if status == 404:
+        return False
+    if status != 200 or not (payload or {}).get("success"):
+        raise EasyAPIError(
+            "登记授权会话失败：%s" % _response_message(payload, text, status),
+            hint="稍后重试；或改用 `login --browser --loopback`（本机回调，旧流程）。")
+    return True
+
+
+def _cli_poll_ticket(base, state, verifier, timeout, reporter):
+    """轮询取票，拿到 ticket 返回；超时或会话失效抛 EasyAPIError。
+
+    间隔 2s ≈ 30 次/分，低于网关 CriticalRateLimit（默认 100 次/分）并留出余量；
+    真被限流时指数退避一次，别把窗口越挤越满。
+    """
+    url = "%s/cli/ticket?%s" % (base, urllib.parse.urlencode(
+        {"state": state, "verifier": verifier}))
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        status, payload, text = http_json("GET", url, timeout=20)
+        if status == 429:
+            time.sleep(CLI_POLL_BACKOFF)
+            continue
+        if status == 404:
+            raise EasyAPIError(
+                "取票接口不存在（后端版本过旧）",
+                hint="改用 `login --browser --loopback`（本机回调，旧流程）。")
+        if status != 200 or not isinstance(payload, dict) or not payload.get("success"):
+            raise EasyAPIError(
+                "取票失败：%s" % _response_message(payload, text, status),
+                hint="会话可能已过期。重新执行 `login --browser`。")
+        data = payload.get("data") or {}
+        if data.get("ticket"):
+            return data["ticket"]
+        time.sleep(CLI_POLL_INTERVAL)
+    raise EasyAPIError(
+        "等待浏览器授权超时（%ss）" % timeout,
+        hint=("重试一次，或改用 `login --browser --manual`（手动粘贴授权码）、"
+              "`login`（账号密码）。"))
+
+
+def _poll_login(base, reporter, client_name, console):
+    """免回跳授权：浏览器停在授权页，本脚本轮询取票。
+
+    返回 (ticket) 或 None（后端过旧，调用方回退 loopback）。
+    """
+    state = secrets.token_hex(16)
+    verifier = secrets.token_hex(32)
+    if not _cli_register_session(base, state, verifier, client_name):
+        return None
+
+    authorize_url = build_authorize_url(console, None, state, client_name)
+    reporter.progress("授权页地址：%s" % authorize_url)
+    reporter.progress("正在打开浏览器…在页面上点「同意并授权」即可，页面不会跳转回本机。")
+    # EASYAPI_NO_BROWSER=1：无头环境/测试用，只打印地址不开浏览器
+    if os.environ.get("EASYAPI_NO_BROWSER") != "1":
+        webbrowser.open(authorize_url)
+    return _cli_poll_ticket(base, state, verifier, AUTH_CALLBACK_WAIT, reporter)
+
+
+def _loopback_login(base, reporter, client_name, console, manual=False):
+    """loopback 授权：本机起监听，浏览器回跳把票交过来（旧流程，保留兼容）。
+
     manual 模式不自动开浏览器（跨机器 / 无默认浏览器场景），授权码也可手动粘贴 ——
     授权页会把票据同时显示出来，专为这条路径兜底。
     """
-    app_config = _fetch_app_config(base)
-    if not _cli_authorize_supported(base, app_config):
-        raise EasyAPIError("当前平台不支持网页授权", hint=_login_fallback_hint(base, app_config))
-
-    console = (console_base or DEFAULT_CONSOLE_BASE).rstrip("/")
-    _check_authorize_page(console)
-
     state = secrets.token_hex(16)
     server, capture = _start_callback_listener(state)
     port = server.server_address[1]
@@ -1906,6 +1994,29 @@ def _browser_login(base, reporter, client_name, manual=False, console_base=None)
 
     ticket = _wait_for_callback(server, capture, AUTH_CALLBACK_WAIT)
     return _cli_exchange(base, ticket)
+
+
+def _browser_login(base, reporter, client_name, manual=False, console_base=None,
+                   loopback=False):
+    """浏览器授权登录：默认轮询取票（页面不回跳），旧后端自动回退 loopback。
+
+    授权页是**前端路由**（控制台域），票据兑换是**网关 API**（网关域）——
+    两个域名必须分开用，混用会打到只接受 POST 的 API 路由上。
+    """
+    app_config = _fetch_app_config(base)
+    if not _cli_authorize_supported(base, app_config):
+        raise EasyAPIError("当前平台不支持网页授权", hint=_login_fallback_hint(base, app_config))
+
+    console = (console_base or DEFAULT_CONSOLE_BASE).rstrip("/")
+    _check_authorize_page(console)
+
+    if not manual and not loopback:
+        ticket = _poll_login(base, reporter, client_name, console)
+        if ticket is not None:
+            return _cli_exchange(base, ticket)
+        reporter.progress("当前后端尚未部署免回跳授权，回退到本机回调流程。")
+
+    return _loopback_login(base, reporter, client_name, console, manual=manual)
 
 
 def dashboard_request(method, path, headers, body=None, base=None, timeout=DEFAULT_HTTP_TIMEOUT):
@@ -2183,7 +2294,8 @@ def cmd_login(args, reporter):
     if args.browser:
         login_data = _browser_login(base, reporter, client_name=args.client_name,
                                     manual=args.manual,
-                                    console_base=resolve_console_base(cfg))
+                                    console_base=resolve_console_base(cfg),
+                                    loopback=args.loopback)
     elif args.access_token:
         login_data = _access_token_login(base, reporter)
     else:
@@ -3555,6 +3667,8 @@ def build_parser():
                    help="浏览器授权登录：打开授权页点一下即可，无需输密码（推荐）")
     p.add_argument("--manual", action="store_true",
                    help="配合 --browser：不开浏览器，打印授权地址并手动粘贴授权码")
+    p.add_argument("--loopback", action="store_true",
+                   help="配合 --browser：强制走旧的本机回调流程（浏览器会跳到 127.0.0.1）")
     p.add_argument("--client-name", default=DEFAULT_CLIENT_NAME,
                    help="授权页上展示的工具名（默认 %s）" % DEFAULT_CLIENT_NAME)
     p.add_argument("--username", help="账号（登录邮箱）；缺省时交互询问")

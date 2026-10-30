@@ -1,82 +1,67 @@
 # EasyAPI Skill
 
-让 agent（Claude Code / ZCode / Codex / Cursor 等）直接调用 EasyAPI 模型网关：生成图片、生成视频、
-文本与多模态对话，并查询可用模型、模型参数与价格。
+让 agent（Claude Code / ZCode / Codex / Cursor）直接调用 EasyAPI 模型网关：生成图片、生成视频、文本与多模态对话，查询模型列表、参数定义与价格。
 
-**核心价值：把「拼接口参数」从模型手里拿走。** 发送前按模型的参数定义逐项校验
-（必填、枚举、上下限），参数错误在本地就被拦下并给出精确提示，而不是等上游返回一个含糊的 400。
+**把「拼接口参数」从模型手里拿走。** 发送前按模型声明的参数逐项校验（必填、枚举、上下限），错误在本地就被拦下；异步视频任务由脚本自己轮询到完成并下载。
 
-- 主仓：<https://github.com/easyapi-ai/easyapi-skill>
-- 镜像：<https://gitee.com/easyapi-ai/easyapi-skill>
-- 许可：MIT
+主仓 <https://github.com/easyapi-ai/easyapi-skill> · 镜像 <https://gitee.com/easyapi-ai/easyapi-skill> · MIT
 
-## 两个技能
+## 两个技能，一次装齐
 
-| 技能 | 职责 | 什么时候用 |
-|---|---|---|
-| `easyapi-auth` | 只做登录与凭据：浏览器授权、自动创建或复用令牌、设备绑定与换绑、查余额、看本地环境 | 第一次配置、换 key、`未配置 EasyAPI API Key` 报错 |
-| `easyapi-studio` | 生成与查询：图片 / 视频 / 对话，模型列表、参数 schema、比价（也保留登录入口） | 日常生成与查询 |
+| 技能 | 职责 |
+|---|---|
+| `easyapi-auth` | 登录与凭据：浏览器授权、自动创建或复用令牌、设备绑定、查余额 |
+| `easyapi-studio` | 生成与查询：图片 / 视频 / 对话，模型列表、参数、比价 |
 
-两个技能**共用同一份配置** `~/.easyapi/config.json`：装两个时「帮我配置 key」会命中
-`easyapi-auth`；只装 `easyapi-studio` 也能登录。装哪个用哪个，不需要都装。
-
-源码在 `plugins/easyapi/skills/<名字>/`；仓库根的 `skills/<名字>/` 是 `tools/sync_dist.py`
-生成的标准布局副本（给通用安装器用），两份内容一致。运行时代码只有一份：
-`easyapi-auth/scripts/easyapi.py` 是 studio 的字节副本，`sync_dist.py --check` 校验哈希，
-**不要手改副本**。
+**两个都必要，任何一种安装方式都会同时装到两个**（它们共用同一份配置 `~/.easyapi/config.json`，缺一个就少一半能力）。
 
 ## 安装
 
-### 方式一：ZCode 插件市场（推荐 ZCode 用户）
+### 方式一：让 AI 装（推荐）
 
-1. 打开 **插件市场 / Plugin Marketplace**
-2. **添加 / Add → 添加插件市场 / Add Plugin Marketplace**
-3. 粘贴仓库地址（**仓库根目录，不是插件子目录**）：
+把下面这段整段发给你的 agent（Claude Code / ZCode / Codex / Cursor 都行）：
 
-   ```
+```text
+请帮我安装 EasyAPI Skill。它有两个技能，都要装：easyapi-auth 负责登录，
+easyapi-studio 负责生成图片/视频和查询模型。
+
+1. 把 https://github.com/easyapi-ai/easyapi-skill 克隆到临时目录
+   （国内用 https://gitee.com/easyapi-ai/easyapi-skill；没有 git 就下载 zip 解压）
+2. 把 plugins/easyapi/skills/easyapi-auth 和 plugins/easyapi/skills/easyapi-studio
+   两个目录整体复制到你的 skills 目录（Claude Code 用 ~/.claude/skills/，
+   其它工具用 ~/.agents/skills/），目录名保持不变
+3. 运行 <skills目录>/easyapi-auth/bin/easyapi-auth env --network 自检
+   （需要 Python 3.7+，不需要 pip；Windows 上用 Git Bash）
+4. 自检通过后运行 <skills目录>/easyapi-auth/bin/easyapi-auth login --browser，
+   把授权页链接发给我
+5. 完成后告诉我配置写在哪、账户余额，并给我 3 个可以直接说的话术示例
+```
+
+### 方式二：ZCode 插件市场
+
+1. 插件市场 → **添加 / Add → 添加插件市场**
+2. 粘贴仓库地址（**仓库根，不是插件子目录**）：
+
+   ```text
    国内：https://gitee.com/easyapi-ai/easyapi-skill.git
    海外：https://github.com/easyapi-ai/easyapi-skill.git
    ```
 
-4. 添加成功后进 **个人 / Personal → easyapi-skill → EasyAPI 模型网关**，点 **安装 / Install**
-5. 安装后也可在 **设置 → 插件 / Settings → Plugins** 里管理
+3. 进入 **个人 → easyapi-skill → EasyAPI**，点 **安装**
+4. 之后在 **设置 → 插件** 里管理
 
-一个插件带两个技能，安装一次即可。
+### 方式三：Agent Skills CLI
 
-### 方式二：Agent Skills CLI（Claude Code / Codex / Cursor 等）
-
-[`npx skills`](https://github.com/vercel-labs/skills) 支持几十种工具，按目标工具自动落到各自的
-skills 目录。需要 **Node ≥ 22.20 + git**（只在安装时用，skill 运行时只需要 Python）。
+需要 **Node ≥ 22.20 + git**（只在安装时用，运行时只需要 Python）。默认装到当前项目，加 `-g` 装到用户级：
 
 ```bash
-# 两个一起装（推荐）：整仓只发现 easyapi-auth 与 easyapi-studio 两个技能
-npx skills add easyapi-ai/easyapi-skill
-
-# 装到用户级（所有项目可用），默认是当前项目
 npx skills add easyapi-ai/easyapi-skill -g
-
-# 国内走 Gitee 镜像
-npx skills add https://gitee.com/easyapi-ai/easyapi-skill.git
-```
-
-只想装一个时用子路径，只列出一个技能：
-
-```bash
-npx skills add easyapi-ai/easyapi-skill/plugins/easyapi/skills/easyapi-auth
-npx skills add easyapi-ai/easyapi-skill/plugins/easyapi/skills/easyapi-studio
-```
-
-> 仓库里 `plugins/easyapi/skills/*` 与 `skills/*` 各有一份，但整仓安装**不会**装出四份：
-> 实测整仓只发现 2 个技能（见[发现范围说明](#npx-skills-add-的发现范围)）。
-
-更新与卸载：
-
-```bash
+npx skills add https://gitee.com/easyapi-ai/easyapi-skill.git -g   # 国内
 npx skills update
 npx skills remove easyapi-auth easyapi-studio
 ```
 
-### 方式三：手动复制（无 Node / 无 git）
+### 方式四：手动复制
 
 下载 zip 或克隆仓库，把 `easyapi-auth/` 和 `easyapi-studio/` 两个目录整体复制到：
 
@@ -84,273 +69,100 @@ npx skills remove easyapi-auth easyapi-studio
 |---|---|
 | 通用（推荐） | `~/.agents/skills/` |
 | Claude Code | `~/.claude/skills/` |
-| 仅当前项目 | 项目根目录下的 `.agents/skills/` |
+| 仅当前项目 | `<项目>/.agents/skills/` |
 
-目录名必须与 skill 的 `name` 一致（`easyapi-auth` / `easyapi-studio`）。Windows 上 `~` 是
-`%USERPROFILE%`。复制后目录是自包含的（脚本按自身位置定位，状态写到 `~/.easyapi`），
-换个 cwd 也能直接用。
-
-## 环境要求
-
-**Python 3.7+，仅用标准库**，不需要 pip install。`bin/easyapi` 会自动探测
-`python3` / `python` / `py -3`，Windows 上装哪个都能用；macOS 和大多数 Linux 自带。
-
-没有 Python 也能用：按
-`plugins/easyapi/skills/easyapi-studio/references/fallback-curl.md` 的固定配方手工调用。
-降级路径**不做本地参数校验**，务必先查 schema 再发送。
+目录名必须与技能名一致；Windows 上 `~` 是 `%USERPROFILE%`。
 
 ## 配置 API Key
 
-对 agent 说「帮我配置 key」即可——装了两个技能时这句话会命中 `easyapi-auth`，
-只装了 `easyapi-studio` 也能登录，两者共用同一份配置。agent 会直接运行浏览器授权
-（`login --browser`），你只需要在弹出的网页里点一下「授权」。脚本会自动创建或复用一个
-名为 `easyapi-skill` 的 API Key，写入 `~/.easyapi/config.json`（权限 600）并查余额验证。
-全程不需要在终端输入任何东西，也不需要在控制台手动建 key。
+装好后直接对 agent 说 **「帮我配置 key」**：它会打开浏览器授权页，你点一下「授权」即可，脚本自动创建或复用一个名为 `easyapi-skill` 的 key 写入 `~/.easyapi/config.json`，并查余额验证。不需要在终端输入任何东西，也不用去控制台手动建 key。
 
-也可以自己动手：
+<details>
+<summary>其他登录方式</summary>
 
 | 命令 | 说明 |
 |---|---|
-| `login --browser` | **推荐**。浏览器授权，不输密码；Bash 超时建议给足 6 分钟 |
-| `login --browser --manual` | 跨机器 / 无默认浏览器：打印授权地址，把页面显示的授权码粘贴回来 |
-| `login` | 账号密码登录（两步验证账号会提示输验证码） |
-| `login --access-token` | 到控制台 `/setting`「安全设置 → 系统访问令牌」复制令牌 + 用户 ID |
-| `login --api-key` | 已有 sk- key，直接粘贴 |
-| `EASYAPI_API_KEY` 环境变量 | CI / 脚本化环境（优先级高于配置文件） |
+| `login --browser` | **推荐**，浏览器授权，不输密码；授权后页面不跳转，脚本自己取票 |
+| `login --browser --manual` | 跨机器/无默认浏览器：打印授权地址，把授权码粘贴回来 |
+| `login --browser --loopback` | 旧流程（本机回调），只在后端/网页版本过旧时需要 |
+| `login` | 账号密码（开启人机验证时不可用） |
+| `login --access-token` | 控制台「安全设置 → 系统访问令牌」+ 用户 ID |
+| `login --api-key` | 已有 `sk-` key，直接粘贴 |
+| `EASYAPI_API_KEY` | 环境变量，优先级高于配置文件（CI 用） |
 
-> `login` 会先验证本地 key：仍然可用就直接返回，不会再弹授权页。换账号或要强制重走授权用
-> `login --force`。`--manual` 模式下授权页不会自动回跳（跨机器时那个本机地址是死的），
-> 票据会一直留在页面上供复制。
+- 密码、访问令牌、授权票据只在内存用一次，不落盘；配置文件里只有权限有限的 `sk-` key。
+- 新建 key 默认绑定本机设备指纹（现算、不落盘）。换机或改主机名用 `login --browser --rebind` 换绑；不想绑定用 `--no-bind`。
+- key 默认不限额度、永不过期，可在控制台 `/console/token` 随时限额或删除；也可 `login --browser --key-quota 20 --key-expire-days 90` 建一个带上限的。
 
-细节：
+</details>
 
-- 密码、系统访问令牌、授权票据**只在内存里用一次，不落盘**；配置文件里只有权限有限的
-  sk- key；
-- 浏览器授权的回调地址**只允许本机回环**（127.0.0.1 / localhost / ::1），后端强制校验，
-  授权码一次性、2 分钟有效；
-- 平台开启网页人机验证（Turnstile 等）时密码登录不可用，脚本会提示改用
-  `--browser` 或 `--access-token`；
-- 自动创建的 key 不限额度、永不过期（额度受账号余额约束），重复登录复用同一个，
-  不堆积；随时可在控制台 `/console/token` 改名、限额或删除。
+## 开始用
 
-### 设备绑定（新建 key 默认开启）
+装好并登录后，直接用自然语言说：
 
-新建的 key 会绑定**本机设备指纹**：指纹由 Windows `MachineGuid` / Linux `machine-id` /
-macOS `IOPlatformUUID` 现算（取不到才退回 MAC + 主机名），**不写进配置文件**。所以：
-
-- 配置文件被拷到别的机器 → key 用不了（`client_binding_mismatch`）；
-- 换机、改主机名、还原系统 → 同一台机器也可能变，用 `login --browser --rebind` 换绑：
-  新建一个绑定本机的 key，并在落盘后吊销旧 key；
-- 复用已有令牌（`--reuse-key`）**不会**改绑定——它可能还在别的脚本/机器上用；
-- 要在多台机器用，就分别登录各建一个 key；不想要绑定用 `--no-bind`。
-
-## 快速验证
-
-```bash
-# 路径按实际安装位置调整；插件市场安装的版本在 ZCode 插件缓存目录下
-E=~/.agents/skills/easyapi-studio/bin/easyapi
-
-"$E" env --network                               # 解释器/目录/网关/接口能力
-"$E" quota                                       # key 有效吗？还有额度吗？
-"$E" models --category image                     # 有哪些生图模型
-"$E" schema seedream-4.5                         # 这个模型有哪些参数、怎么发
-"$E" image --model seedream-4.5 --prompt "一只戴墨镜的柴犬"
-```
-
-`bin/easyapi` 会自己探测 `python3` → `python` → `py -3`，所以 Windows 上不需要
-确认命令名；查询模型和参数**不需要 key**（`/pricing` 与 `/pricing/schema` 都是匿名接口）。
+- 「帮我生成一只戴墨镜的柴犬，1024x1024」
+- 「做一个猫在草地上跑的 5 秒视频」
+- 「EasyAPI 上有哪些生图模型，分别多少钱」
 
 ## 命令
 
 | 命令 | 作用 |
 |---|---|
-| `env [--network]` | 环境自检：解释器、目录、快照、网关与 schema 接口能力 |
-| `quota` | 查余额、用量、过期时间 |
-| `models [--category image\|video\|text] [--search 关键词]` | 列可用模型 |
+| `env --network` | 环境自检：解释器、目录、网关与 schema 接口能力 |
+| `quota` | 查余额与用量 |
+| `models --category image` | 列可用模型 |
 | `schema <模型名>` | 参数定义 + 提交端点 + 示例请求体 |
-| `compare [模型...] [--category X] [--seconds N] [--resolution R]` | 比价与选型 |
-| `recommend --category video --need first-last-frame` | 按能力 + 价格给 3 个候选 |
-| `image --prompt "..."` | 生图 |
-| `video --prompt "..."` | 生视频（自动轮询到完成并下载） |
-| `chat --prompt "..."` | 文本 / 多模态对话 |
+| `compare` / `recommend` | 比价与选型 |
+| `image` / `video` / `chat` | 生成图片 / 视频 / 对话 |
 | `config` / `login` / `logout` | 配置管理 |
 
-通用开关：`--json`（机器可读输出）、`--refresh`（忽略缓存）、`--dry-run`（只校验并打印请求体，
-不发送、**不需要 key**）、`--strict`（定义外的参数直接报错）。
+通用开关：`--json`、`--refresh`（忽略缓存）、`--dry-run`（只校验并打印请求体，不发送、不需要 key）、`--strict`（定义外参数直接报错）。
 
-## 生成结果落在哪
+## 环境要求
 
-图片和视频默认下载到**当前工作目录**的 `easyapi-out/`，文件名形如
-`20260921-153012-seedream-4.5-1.png`。用 `--out` 改目录。
+**Python 3.7+，仅用标准库**，不需要 `pip install`。启动器会自动探测 `python3` / `python` / `py -3`。
 
-脚本会打印**绝对路径**和原始 URL。终端 agent 无法内联渲染图片，给路径最有用。
+没有 Python 时按 [`fallback-curl.md`](plugins/easyapi/skills/easyapi-studio/references/fallback-curl.md) 的固定配方手工调用——降级路径**不做参数校验**，务必先查 schema 再发送。
 
-## 配置与缓存
+## 文件落在哪
 
-```
-~/.easyapi/
-├── config.json          # key、token_id、base_url、默认模型（权限 600）
-└── cache/
-    ├── pricing.json     # 模型列表（默认缓存 24 小时）
-    ├── schemas.json     # 全量参数 schema（/pricing/schema?all=1）
-    ├── detail/*.json    # 单模型详情（/pricing/detail）
-    └── schema/*.json    # 单模型 schema（/pricing/schema?model_name=）
-```
+- 生成结果：当前目录下的 `easyapi-out/`（用 `--out` 改），脚本打印绝对路径和原始 URL。
+- 配置与缓存：`~/.easyapi/`（`config.json` 权限 600；`cache/` 缓存模型列表与 schema，24 小时过期）。设 `EASYAPI_HOME` 可整体换目录。
 
-`pricing_version` 变化时，`detail/`、`schema/`、`schemas.json` 会一起作废。
+## 安全边界
 
-设 `EASYAPI_HOME` 可以把整个状态目录换到别处（测试或多套环境隔离）：
+- key 明文存在 `~/.easyapi/config.json`，等价于 `~/.aws/credentials`；不进命令行参数，输出里不出现任何 key 字符（含打码片段）。
+- 设备指纹只在有 `Authorization` 的请求里发送，且每次现算、不落盘；配置被拷到别的机器无法直接使用。
+- **防不了**同机恶意软件，也防不了用户主动把 key 和设备信息一起交出去。
 
-```bash
-EASYAPI_HOME=/tmp/easyapi-test "$E" quota
-```
+<details>
+<summary>已知限制与网关域名</summary>
 
-配置**不在 skill 目录里** —— skill 目录可能只读，插件缓存更新时还会被整体替换。
+- 参数校验覆盖取决于数据：按 `/pricing/schema?all=1` → 单模型 schema → `/pricing/detail` → 内置快照四级合并；都没有的模型会跳过校验并明确告知。
+- 只有模型**声明过**的动态字段才会被网关转发；`negative_prompt`、`cfg_scale` 这类需要模型显式声明。
+- 只用 API Key 查不到消费明细（明细走登录会话），额度可以查。
+- 预估价格不含折扣，仅用于横向比较。
+- 接口域名 `https://token.easyapi.com`（`EASYAPI_BASE_URL`），控制台域名 `https://www.easyapi.com`（`EASYAPI_CONSOLE_BASE_URL`）。两个域名不能混用：授权页是前端路由，票据兑换是接口，路径同名。
 
-模型有变动时：`easyapi.py config --clear-cache`，或单次 `--refresh`。
-
-## 安全模型
-
-- key **明文**存在 `~/.easyapi/config.json`（权限位 600；Windows 上 chmod 不生效，
-  实际由用户目录 ACL 保护），等价于 `~/.aws/credentials`。也可以只用 `EASYAPI_API_KEY`
-  环境变量，优先级更高。
-- key **不进命令行参数**（避免 shell history / 进程列表），输出里**不出现任何 key 字符**
-  （包括打码片段）。
-- 新建 key 默认绑定本机设备指纹；指纹每次现算、不落盘，所以配置泄漏到别的机器无法直接使用。
-- 浏览器授权票据一次性、120 秒、仅允许回环回调；登录用的 access_token 只在内存里用一次。
-- **防不了什么**：同机恶意软件（能读 key 也能读设备信息）、或用户主动把 key + 指纹一起交出去。
-  要限制损失，用 `login --browser --key-quota 20 --key-expire-days 90` 给 key 设上限与有效期。
-
-## 网关入口
-
-**接口和控制台是两个域名**，脚本对两者都内置了默认值：
-
-| 用途 | 默认值 | 环境变量 |
-|---|---|---|
-| 接口（`/v1/...`、`/pricing`、`/usage/token`） | `https://token.easyapi.com` | `EASYAPI_BASE_URL` |
-| 控制台前端（浏览器授权页所在） | `https://www.easyapi.com` | `EASYAPI_CONSOLE_BASE_URL` |
-
-私有化部署改这两个值即可：
-
-```bash
-easyapi.py config --base-url https://your-gateway.example.com
-easyapi.py config --console-base https://your-console.example.com
-```
-
-两个域名不能混用：授权页 `/cli/authorize` 是**前端路由**（在控制台域），而票据兑换
-`POST /cli/authorize`、`POST /cli/exchange` 是**接口**（在网关域），路径同名但域名不同。
-拿网关域名去开页面会打到只接受 POST 的接口上（GET 返回 404），脚本会提前探测并报错。
-
-只有当定价接口被单独拆到另一个域名时，才需要额外设置 `--pricing-base`（不设就跟随网关入口）。
-
-## 已知限制
-
-- **参数校验的覆盖范围取决于数据。** 参数按四级来源解析并逐字段合并：
-  `/pricing/schema?all=1` → 单模型 `/pricing/schema` → `/pricing/detail` → 内置快照。
-  新接口可用时新模型上线即自动生效；四者都没有的模型会跳过校验并明确告知。
-  **在管理端补齐模型的 `params` 可以继续提升覆盖率，补完无需重新分发 skill。**
-- **只有模型声明过的动态字段才会被网关转发。** 一等字段（`prompt`/`duration`/
-  `resolution`/`size`/`aspect_ratio`/`generate_audio`/`seed`/`image`/`images`/
-  `input_references`）不受影响；`negative_prompt`、`cfg_scale` 这类必须模型显式声明。
-- **只用 API Key 查不到消费明细。** `/user/self`、`/log/self`、`/data/self` 走登录会话鉴权，
-  不是 API Key 鉴权。额度可以查（`/usage/token`），明细请到控制台看。
-- **按量计费模型无法本地估算价格**，只能给倍率做横向参考。
-- **预估价格不含折扣**，仅用于横向比较；实际金额以平台扣费为准。
-- **图片异步任务（`/v1/images/tasks`）未接入**，脚本只用同步的 generations/edits。
-- **设备绑定只防「配置被拷走」**：同机进程仍能读 key 并算出同一指纹；换机/改主机名需要
-  `login --rebind`。需要多机并发就各建一个 key。
-
-报错对照表见
-[`references/troubleshooting.md`](plugins/easyapi/skills/easyapi-studio/references/troubleshooting.md)。
-
-## 目录结构
-
-```
-easyapi-skill/
-├── LICENSE                                 MIT
-├── marketplace.json                        ZCode 市场清单（市场名 easyapi-skill）
-├── skills/                                 生成的标准布局副本（别手改）
-│   ├── easyapi-studio/
-│   └── easyapi-auth/
-├── plugins/
-│   └── easyapi/                            插件本体
-│       ├── .zcode-plugin/plugin.json       插件清单（一个插件带两个技能）
-│       └── skills/
-│           ├── easyapi-studio/             创作技能（源）
-│           │   ├── SKILL.md
-│           │   ├── bin/easyapi             启动器：探测 python3/python/py -3 + 解析目录
-│           │   ├── references/             按需阅读的细节文档
-│           │   │   ├── image.md / video.md / chat.md
-│           │   │   ├── models.md           计费与比价陷阱
-│           │   │   ├── params-conventions.md  统一参数命名与首尾帧
-│           │   │   ├── account.md          key 与额度
-│           │   │   ├── troubleshooting.md
-│           │   │   ├── fallback-curl.md    无 Python 时的 curl 配方
-│           │   │   └── model-snapshot.json 参数快照
-│           │   └── scripts/easyapi.py      仅标准库（共享实现的源）
-│           └── easyapi-auth/               只做登录与凭据
-│               ├── SKILL.md
-│               ├── bin/easyapi-auth
-│               └── scripts/easyapi.py      studio 脚本的字节副本（生成，别手改）
-├── tools/build_snapshot.py                 重新生成参数快照（--from-api / --docs）
-├── tools/sync_dist.py                      同步共享脚本 + 生成 / 校验 skills/ 副本
-└── tests/test_easyapi.py                   178 个用例（含打包、重定位、分发漂移、绑定）
-```
-
-插件规范要求技能放在 `skills/<name>/SKILL.md`，所以源在插件目录里；仓库根的
-`skills/<name>/` 是为通用安装器生成的副本。`sync_dist.py --check` 同时校验三件事：
-两个副本与源一致、`easyapi-auth` 的脚本与 studio 字节相同、旧的 `skills/easyapi/` 已删除。
+</details>
 
 ## 开发
 
 ```bash
-# 跑测试（纯逻辑 + 本地 mock server + 打包/重定位/分发契约，不需要 key、不碰真实接口）
-python3 tests/test_easyapi.py
-
-# 从线上重新生成参数快照（推荐；需要网关已部署 /pricing/schema）
-python3 tools/build_snapshot.py --from-api https://token.easyapi.com \
-  --out plugins/easyapi/skills/easyapi-studio/references/model-snapshot.json
-
-# 离线：从管理端导出生成
-python3 tools/build_snapshot.py --docs ../easyapi-ai-api/docs \
-  --out plugins/easyapi/skills/easyapi-studio/references/model-snapshot.json
-
-# 改完 skill 后同步分发副本，并检查是否有漂移
-python3 tools/sync_dist.py
-python3 tools/sync_dist.py --check
+python3 tests/test_easyapi.py        # 纯逻辑 + mock server，不需要 key
+python3 tools/sync_dist.py           # 改完 skill 后同步分发副本
+python3 tools/sync_dist.py --check   # 校验副本无漂移
 ```
 
-参数快照从 `easyapi-ai-api/docs/{image,video,all}_models.json` 生成，会剥掉
-`upstream_name` / `source` / `confidence` 三个服务端专有字段（与后端
-`model.SanitizeParamsForClient` 口径一致）。
+<details>
+<summary>改了 skill 内容后如何让 ZCode 更新</summary>
 
-### npx skills add 的发现范围
+1. `python3 tools/sync_dist.py`
+2. `plugins/easyapi/.zcode-plugin/plugin.json` 与 `marketplace.json` 的 `version` **同时**加一（不一致更新不生效）
+3. ZCode：插件市场 → 齿轮 → 市场源 → 刷新该市场 → 个人 → 插件详情 → 更新
 
-实测 `skills@1.7.4`（`--list`，整仓作为来源）：只发现 `easyapi-auth`、`easyapi-studio`
-两个技能，不会因为仓库里有两份副本而重复安装。原因在 CLI 的发现逻辑：
+</details>
 
-- 只扫描仓库根、`skills/`、`skills/.curated/`、`skills/.experimental/`、`skills/.system/`
-  以及 `.claude/skills/`、`.agents/skills/` 等标准容器目录，每个容器最多向下 3 层；
-- 只有存在 `.claude-plugin/marketplace.json` 或 `.claude-plugin/plugin.json` 时，
-  清单里声明的技能路径才会被额外扫描 —— 本仓库用的是 ZCode 的 `.zcode-plugin/plugin.json`
-  和根 `marketplace.json`，不在其列，所以 `plugins/easyapi/skills/*` 不会被发现；
-- 从仓库根只向下看 1 层，`plugins/` 目录本身没有 `SKILL.md`，不会再往下走；
-- 只有标准目录里一个技能都没找到时才做全仓递归；`--full-depth` 会全仓扫描，但同名技能
-  只保留第一次发现的那个，结果仍是 2 个。
+## 反馈
 
-### 改了 skill 内容后怎么让 ZCode 更新
-
-源码改动不是热重载，要走三步：
-
-1. 同步分发副本：`python3 tools/sync_dist.py`（否则根目录 `skills/` 下的副本会落后）
-2. 把 `plugins/easyapi/.zcode-plugin/plugin.json` 的 `version` 加一，
-   **同时**把 `marketplace.json` 里对应条目的 `version` 改成一样（版本不一致更新不会生效）。
-3. 在 ZCode 里：插件市场页齿轮 → **市场源 / Marketplace Sources** → 找到
-   `easyapi-skill` → 点 **刷新该市场**；再回 **个人** → 插件详情 → **更新**。
-
-## 反馈与贡献
-
-- 仓库主在 GitHub（<https://github.com/easyapi-ai/easyapi-skill>），Gitee 是同步镜像。
-- 问题与建议：两边都能提 issue，GitHub 响应更快。
-- 提 PR 请开在 GitHub 的 `master` 上；Gitee 侧的 PR 会在合并后同步过去。
-- 改 skill 内容后记得跑 `python3 tests/test_easyapi.py` 和 `python3 tools/sync_dist.py --check`。
+GitHub 主仓提 issue / PR（响应更快），Gitee 侧合并后同步。

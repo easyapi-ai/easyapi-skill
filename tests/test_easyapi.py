@@ -1691,9 +1691,12 @@ class TestPluginPackaging(unittest.TestCase):
         self.assertIsInstance(self.market.get("plugins"), list)
         self.assertTrue(self.market["plugins"], "市场至少要有一个插件条目")
 
-    def test_marketplace_name_is_dev_prefixed(self):
-        self.assertTrue(self.market["name"].startswith("dev-"),
-                        "本地测试市场用 dev- 前缀，避免与正式市场重名")
+    def test_marketplace_name_is_public_name(self):
+        # 公开市场的名字必须和仓库一致；dev- 前缀是早先本地测试用的，发布后不能再出现
+        self.assertEqual(self.market["name"], "easyapi-skill",
+                         "公开市场名必须是 easyapi-skill")
+        self.assertFalse(self.market["name"].startswith("dev-"),
+                         "本地测试用的 dev- 前缀不能出现在正式市场清单里")
 
     def test_each_entry_has_required_fields(self):
         for entry in self.market["plugins"]:

@@ -1,5 +1,5 @@
 {
-  "name": "dev-easyapi-skill",
+  "name": "easyapi-skill",
   "plugins": [
     {
       "name": "easyapi",

@@ -2153,5 +2153,46 @@ class TestDryRunEstimate(IntegrationBase):
         self.assertIn("resolution", payload["effective_params"])
 
 
+class TestAuthorizeUrlAndCallbackPage(unittest.TestCase):
+    def test_manual_flag_in_authorize_url(self):
+        manual = mod.build_authorize_url(
+            "https://www.easyapi.com/", "http://127.0.0.1:9000/callback",
+            "state-1", "EasyAPI CLI", manual=True)
+        self.assertTrue(manual.startswith("https://www.easyapi.com/cli/authorize?"))
+        self.assertIn("manual=1", manual)
+        self.assertNotIn("manual=1", mod.build_authorize_url(
+            "https://www.easyapi.com", "http://127.0.0.1:9000/callback",
+            "state-1", "EasyAPI CLI", manual=False))
+
+    def test_callback_ok_page_offers_website_redirect(self):
+        html = mod._callback_ok_html()
+        self.assertIn("授权成功", html)
+        self.assertIn("https://www.easyapi.com", html)
+        self.assertIn("setInterval", html)
+        self.assertIn("留在本页", html)
+
+    def test_callback_fail_page_escapes_reason(self):
+        html = mod._callback_fail_html('<script>alert(1)</script>')
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("&lt;script&gt;", html)
+
+
+class TestLoginFastPath(IntegrationBase):
+    def test_login_with_valid_key_does_not_reauth(self):
+        self.gateway = MockGateway().start()
+        with open(os.path.join(self.home, "config.json"), "w", encoding="utf-8") as fh:
+            json.dump({"api_key": "sk-alreadyconfigured", "token_id": 7}, fh)
+
+        proc = self.run_cli("login", "--json", gateway=self.gateway, key=None)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload.get("already_logged_in"))
+        self.assertFalse(any(r[1].startswith("/cli/") for r in self.gateway.requests),
+                         "key 可用时不该再走浏览器授权")
+        self.assertFalse(any(r[0] == "POST" and r[1] == "/token" for r in self.gateway.requests),
+                         "key 可用时不该再新建令牌")
+        self.assertEqual(self.read_config()["api_key"], "sk-alreadyconfigured")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

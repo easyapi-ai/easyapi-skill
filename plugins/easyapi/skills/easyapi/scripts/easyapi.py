@@ -34,6 +34,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import webbrowser
+from html import escape as _html_escape
 
 # --------------------------------------------------------------------------
 # 常量
@@ -87,15 +88,144 @@ CAPTCHA_CONFIG_KEYS = ("turnstile_check", "aliyun_captcha_enabled")
 DEFAULT_CLIENT_NAME = "EasyAPI CLI"
 AUTH_CALLBACK_WAIT = 300       # 等用户在浏览器里点授权的最长时间
 
-_CALLBACK_OK_HTML = (
-    "<!doctype html><meta charset=\"utf-8\"><title>授权成功</title>"
-    "<body style=\"font-family:system-ui,sans-serif;text-align:center;padding-top:18vh\">"
-    "<h2>授权成功</h2><p>请回到命令行工具继续，本页面可以关闭。</p></body>")
+# 浏览器授权的本地回调页。纯内联 HTML/CSS/JS：它是 127.0.0.1 上的临时页面，
+# 不能依赖任何外部资源（离线、内网、CDN 被墙都要能用）。
+# 成功页会给用户一个明确的收尾：5 秒后跳官网，可随时取消。
+_CALLBACK_SECONDS = 5
+_CALLBACK_PAGE = """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+    background: #f6f7f9; color: #16181d;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    width: min(420px, 100%); background: #fff; border: 1px solid #e6e8ec;
+    border-radius: 20px; padding: 34px 30px 26px; text-align: center;
+    box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 14px 34px -14px rgba(16,24,40,.14);
+  }
+  .brand { display: inline-flex; align-items: center; gap: 8px; font-size: 13px;
+           font-weight: 600; color: #5f45e6; }
+  .brand i { width: 8px; height: 8px; border-radius: 2px; background: #5f45e6; }
+  .badge {
+    width: 62px; height: 62px; margin: 24px auto 0; border-radius: 50%;
+    display: grid; place-items: center; background: #ecfdf5; color: #0f9f6e;
+    box-shadow: 0 0 0 10px #f3fdf8;
+  }
+  .badge.fail { background: #fef2f2; color: #dc2626; box-shadow: 0 0 0 10px #fef7f7; }
+  .badge svg { width: 28px; height: 28px; }
+  h1 { margin: 22px 0 0; font-size: 21px; line-height: 1.25; letter-spacing: -.01em; }
+  p { margin: 10px 0 0; font-size: 14px; line-height: 1.6; color: #5b616e; }
+  .bar { height: 3px; border-radius: 999px; background: #eef0f3; overflow: hidden; margin: 22px 0 0; }
+  .bar span { display: block; height: 100%; background: #0f9f6e; transform-origin: left;
+              animation: drain __SECONDS__s linear forwards; }
+  @keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+  .actions { display: grid; gap: 10px; margin-top: 20px; }
+  .btn { display: block; padding: 11px 16px; border-radius: 10px; font-size: 14px;
+         font-weight: 500; text-decoration: none; cursor: pointer;
+         border: 1px solid transparent; font-family: inherit; }
+  .btn.primary { background: #16181d; color: #fff; }
+  .btn.ghost { background: #fff; color: #16181d; border-color: #e0e3e8; }
+  .btn:active { transform: translateY(1px); }
+  .hint { font-size: 12px; color: #8a909c; margin-top: 18px; }
+  .meta { font-size: 12px; color: #8a909c; margin-top: 6px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0f1115; color: #f2f4f7; }
+    .card { background: #171a21; border-color: #262b36;
+            box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 18px 40px -18px rgba(0,0,0,.7); }
+    p { color: #a7adba; }
+    .badge { background: rgba(16,185,129,.12); color: #34d399;
+             box-shadow: 0 0 0 10px rgba(16,185,129,.05); }
+    .badge.fail { background: rgba(239,68,68,.12); color: #f87171;
+                  box-shadow: 0 0 0 10px rgba(239,68,68,.05); }
+    .bar { background: #222732; }
+    .btn.primary { background: #f2f4f7; color: #16181d; }
+    .btn.ghost { background: transparent; color: #f2f4f7; border-color: #2c323d; }
+    .hint, .meta { color: #6f7684; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bar span { animation: none; transform: scaleX(1); opacity: .4; }
+  }
+</style>
+</head>
+<body>
+  <main class="card" role="status" aria-live="polite">
+    <div class="brand"><i></i>EasyAPI</div>
+    __BODY__
+  </main>
+</body>
+</html>"""
 
-_CALLBACK_FAIL_HTML = (
-    "<!doctype html><meta charset=\"utf-8\"><title>授权失败</title>"
-    "<body style=\"font-family:system-ui,sans-serif;text-align:center;padding-top:18vh\">"
-    "<h2>授权失败</h2><p>%s</p><p>请回到命令行工具重试。</p></body>")
+_CALLBACK_OK_BODY = """    <div class="badge" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+    </div>
+    <h1>授权成功</h1>
+    <p>可以关闭这个页面，回到终端继续。</p>
+    <div class="bar" aria-hidden="true"><span></span></div>
+    <p id="count">__SECONDS__ 秒后前往 EasyAPI 官网</p>
+    <div class="actions">
+      <a class="btn primary" href="https://www.easyapi.com">前往 EasyAPI 官网</a>
+      <button class="btn ghost" id="stay" type="button">留在本页</button>
+    </div>
+    <p class="hint">不跳转也没关系，登录已经在终端完成。</p>
+    <script>
+      (function () {
+        var left = __SECONDS__, stopped = false;
+        var label = document.getElementById('count');
+        document.getElementById('stay').addEventListener('click', function () {
+          stopped = true;
+          label.textContent = '已取消自动跳转，可以关闭这个页面。';
+          document.getElementById('stay').style.display = 'none';
+        });
+        var timer = setInterval(function () {
+          if (stopped) { clearInterval(timer); return; }
+          left -= 1;
+          if (left > 0) { label.textContent = left + ' 秒后前往 EasyAPI 官网'; return; }
+          clearInterval(timer);
+          window.location.replace('https://www.easyapi.com');
+        }, 1000);
+      })();
+    </script>"""
+
+_CALLBACK_FAIL_BODY = """    <div class="badge fail" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 17h.01"/>
+      </svg>
+    </div>
+    <h1>授权未完成</h1>
+    <p>__REASON__</p>
+    <div class="actions">
+      <a class="btn primary" href="https://www.easyapi.com">打开 EasyAPI 官网</a>
+    </div>
+    <p class="hint">回到命令行工具重试；跨机器授权可加 --manual 手动粘贴授权码。</p>"""
+
+
+def _callback_page(title, body):
+    return (_CALLBACK_PAGE
+            .replace("__TITLE__", title)
+            .replace("__SECONDS__", str(_CALLBACK_SECONDS))
+            .replace("__BODY__", body))
+
+
+def _callback_ok_html():
+    return _callback_page("授权成功", _CALLBACK_OK_BODY)
+
+
+def _callback_fail_html(reason):
+    # 失败原因可能来自回调 query（攻击者可控），必须转义后再拼进页面
+    body = _CALLBACK_FAIL_BODY.replace("__REASON__", _html_escape(reason or "授权被取消"))
+    return _callback_page("授权未完成", body)
 
 # 校验时允许但不认识就告警的字段（网关会透传给上游）
 UNKNOWN_PARAM_LEVEL = "warn"
@@ -1654,7 +1784,7 @@ def _start_callback_listener(expected_state):
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path != "/callback":
-                self._respond(_CALLBACK_FAIL_HTML % "未知路径")
+                self._respond(_callback_fail_html("未知路径"))
                 return
             params = urllib.parse.parse_qs(parsed.query)
             got_error = (params.get("error") or [""])[0]
@@ -1663,16 +1793,16 @@ def _start_callback_listener(expected_state):
             if got_error:
                 capture.error = got_error
                 capture.detail = (params.get("error_description") or [""])[0]
-                self._respond(_CALLBACK_FAIL_HTML % (got_error or "授权被取消"))
+                self._respond(_callback_fail_html(got_error or "授权被取消"))
                 return
             # state 是 CLI 生成的一次性随机串，用来确认这次回调确实属于本次登录
             if got_state != expected_state:
                 capture.error = "state 不匹配"
                 capture.detail = "回调可能来自另一次授权，已丢弃。请重试。"
-                self._respond(_CALLBACK_FAIL_HTML % "state 校验失败，请回到命令行工具重试")
+                self._respond(_callback_fail_html("state 校验失败，请回到命令行工具重试"))
                 return
             capture.ticket = got_ticket
-            self._respond(_CALLBACK_OK_HTML)
+            self._respond(_callback_ok_html())
 
     server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1720,6 +1850,22 @@ def _check_authorize_page(console_base):
         )
 
 
+def build_authorize_url(console, redirect_uri, state, client_name, manual=False):
+    """拼授权页地址。
+
+    manual=1 让页面关闭自动回跳：跨机器授权时 127.0.0.1 在用户浏览器上是死地址，
+    跳过去会把还没复制的一次性授权码一起带走。
+    """
+    params = {
+        "redirect_uri": redirect_uri,
+        "state": state,
+        "client_name": client_name,
+    }
+    if manual:
+        params["manual"] = "1"
+    return "%s/cli/authorize?%s" % (console.rstrip("/"), urllib.parse.urlencode(params))
+
+
 def _browser_login(base, reporter, client_name, manual=False, console_base=None):
     """浏览器授权登录：起本地监听 → 开授权页 → 拿一次性授权码 → 换登录态。
 
@@ -1739,12 +1885,8 @@ def _browser_login(base, reporter, client_name, manual=False, console_base=None)
     server, capture = _start_callback_listener(state)
     port = server.server_address[1]
     redirect_uri = "http://127.0.0.1:%d/callback" % port
-    query = urllib.parse.urlencode({
-        "redirect_uri": redirect_uri,
-        "state": state,
-        "client_name": client_name,
-    })
-    authorize_url = "%s/cli/authorize?%s" % (console, query)
+    authorize_url = build_authorize_url(console, redirect_uri, state, client_name,
+                                        manual=manual)
 
     reporter.progress("授权页地址：%s" % authorize_url)
     if manual:
@@ -2010,6 +2152,23 @@ def _save_key_and_verify(cfg, reporter, key, account_quota_usd=None, token_id=No
 def cmd_login(args, reporter):
     cfg = load_config()
     base, _pricing = resolve_bases(cfg)
+
+    # 本地已有可用 key 时不再走浏览器授权：用户跑 login 往往只是想知道「配好了没有」，
+    # 每次都弹授权页、点授权、等回跳，是纯粹的打扰（也是「为什么又要授权」的来源）。
+    # 只有显式换绑/复用/新建/粘贴 key，或 key 真的失效时，才重新授权。
+    if not any((args.api_key, args.access_token, args.reuse_key, args.create_new,
+                args.rebind, args.force)) and cfg.get("api_key"):
+        try:
+            payload, human = _quota_report(cfg)
+            payload["already_logged_in"] = True
+            reporter.result(payload,
+                            ["已经配置了可用的 API Key，无需重新授权。"] + human)
+            return 0
+        except EasyAPIError as exc:
+            if getattr(exc, "status", None) not in (401, 403):
+                # 网络抖动不该把用户赶去浏览器重新授权
+                raise
+            reporter.progress("本地 key 已失效，重新走授权。")
 
     if args.api_key:
         # 兜底路径：用户已经有 sk- key，直接粘贴。不经过账号。
@@ -3410,6 +3569,8 @@ def build_parser():
                    help="新建令牌时不绑定本机设备指纹（默认绑定）")
     p.add_argument("--rebind", action="store_true",
                    help="换绑：新建绑定本机的令牌，并吊销配置里的旧令牌")
+    p.add_argument("--force", action="store_true",
+                   help="即使本地 key 仍可用，也强制重新走一次授权（换账号时用）")
     p.add_argument("--key-quota", type=float, metavar="USD",
                    help="新建令牌的额度上限（美元）；不填则不限额度")
     p.add_argument("--key-expire-days", type=int, metavar="N",

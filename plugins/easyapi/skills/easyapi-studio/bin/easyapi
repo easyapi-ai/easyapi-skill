@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# EasyAPI skill 统一入口：解析自身目录 + 探测 Python 解释器后执行 scripts/easyapi.py。
+#
+# 需要这层启动器的原因：
+#   1. skill 会被复制到各工具的 skills 目录（插件市场 / npx skills add / 手动复制），
+#      cwd 不一定是 skill 目录，`python3 scripts/easyapi.py` 会找不到文件；
+#   2. Windows 上经常只有 `python` 或 `py -3`，没有 `python3`。
+set -euo pipefail
+
+# 只用 shell 内建（cd/pwd/command）解析目录：极简 PATH 或裁掉 coreutils 的环境里
+# dirname 可能不存在，而这一层是唯一入口，不能依赖外部命令。
+SOURCE_PATH="${BASH_SOURCE[0]:-$0}"
+# Windows 上脚本路径可能是反斜杠（从 Python/Node 子进程传进来时尤其常见），
+# 先统一成正斜杠，后面的 %/* 与 case 才能正确切分。
+SOURCE_PATH="${SOURCE_PATH//\\//}"
+case "$SOURCE_PATH" in
+  */*) BIN_DIR=$(cd "${SOURCE_PATH%/*}" && pwd) ;;
+  *)   BIN_DIR=$(pwd) ;;
+esac
+SKILL_DIR=$(cd "$BIN_DIR/.." && pwd)
+ENTRY="$SKILL_DIR/scripts/easyapi.py"
+
+if [ ! -f "$ENTRY" ]; then
+  echo "找不到 $ENTRY —— skill 目录不完整，请重新安装。" >&2
+  exit 127
+fi
+
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    exec "$candidate" "$ENTRY" "$@"
+  fi
+done
+
+if command -v py >/dev/null 2>&1; then
+  exec py -3 "$ENTRY" "$@"
+fi
+
+cat >&2 <<'EOF'
+没有找到 Python 解释器（已尝试 python3 / python / py -3）。
+EasyAPI skill 需要 Python 3.7+（只用标准库，不需要 pip 安装）。
+
+可选处理：
+  1) 安装 Python 3.7+ 后重试（python.org 或系统包管理器）；
+  2) 临时降级：按 skill 目录下 references/fallback-curl.md 的 curl 配方调用。
+     降级路径不做参数预校验，务必先看 schema 再发送。
+EOF
+exit 127

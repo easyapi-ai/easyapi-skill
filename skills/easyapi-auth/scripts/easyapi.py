@@ -2375,6 +2375,7 @@ def cmd_env(args, reporter):
     """
     snap = load_snapshot()
     meta = snap.get("_meta") or {}
+    has_snapshot = os.path.isfile(SNAPSHOT_PATH)
     cfg = load_config()
     info = {
         "ok": True,
@@ -2383,7 +2384,8 @@ def cmd_env(args, reporter):
         "skill_dir": SKILL_DIR,
         "config_dir": CONFIG_DIR,
         "snapshot_date": meta.get("generated_at"),
-        "snapshot_models": len(snap.get("models") or {}),
+        # 授权技能不打包快照，这里如实给 null 而不是假装 0 个模型
+        "snapshot_models": len(snap.get("models") or {}) if has_snapshot else None,
         "gateway_base": cfg.get("base_url") or DEFAULT_GATEWAY_BASE,
         "pricing_base": cfg.get("pricing_base") or cfg.get("base_url") or DEFAULT_PRICING_BASE,
         "key_configured": bool(cfg.get("api_key")),
@@ -2417,11 +2419,12 @@ def cmd_env(args, reporter):
         "配置目录    %s" % info["config_dir"],
         "网关入口    %s" % info["gateway_base"],
         "定价入口    %s" % info["pricing_base"],
-        "API Key     %s" % ("已配置" if info["key_configured"] else "未配置（配置后可用生图/生视频）"),
+        "API Key     %s" % ("已配置" if info["key_configured"] else "未配置（配置后才能调用 EasyAPI）"),
         "设备指纹    %s…（令牌绑定用；换机后会变）" % info["client_id_prefix"],
-        "内置快照    %s（%s 个模型）"
-        % (info["snapshot_date"] or "日期未知", info["snapshot_models"]),
     ]
+    if has_snapshot:
+        human.append("内置快照    %s（%s 个模型）"
+                     % (info["snapshot_date"] or "日期未知", info["snapshot_models"]))
     if args.network:
         if info.get("pricing_ok"):
             human.append("线上定价    正常（%s 个模型，pricing_version=%s）"

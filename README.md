@@ -8,9 +8,15 @@
 
 ## 安装
 
-**skill 内容只有一个源**：`plugins/easyapi/skills/easyapi/`。仓库根的 `skills/easyapi/`
-是由 `tools/sync_dist.py` 从它生成的副本（标准 `skills/<name>` 布局，给通用安装器用），
-两份一致性由测试和 `sync_dist.py --check` 守住，不要手改。
+仓库里有**两个技能**：
+
+- `easyapi-auth`：只负责配置凭据，登录、换绑、查额度、看环境。
+- `easyapi-studio`：生成图片 / 视频 / 对话，查询模型与价格（也保留登录入口）。
+
+两个技能的源都在 `plugins/easyapi/skills/<名字>/`；仓库根的 `skills/<名字>/` 是
+`tools/sync_dist.py` 生成的副本（标准 `skills/<name>` 布局，给通用安装器用）。
+运行时代码只有一份：`easyapi-auth/scripts/easyapi.py` 是 studio 的字节副本，
+`sync_dist.py --check` 会校验哈希，不要手改它。
 
 ### 方式一：ZCode 插件市场（推荐 ZCode 用户）
 
@@ -31,33 +37,41 @@
 几十种工具，按目标工具自动落到各自的 skills 目录：
 
 ```bash
-npx skills add <owner>/easyapi-skill/plugins/easyapi/skills/easyapi -a claude-code
+# 两个都装（推荐）：配置 + 创作
+npx skills add <owner>/easyapi-skill/plugins/easyapi/skills/easyapi-studio -a claude-code
+npx skills add <owner>/easyapi-skill/plugins/easyapi/skills/easyapi-auth -a claude-code
+
+# 只需要配 key 的话，只装这一个
+npx skills add <owner>/easyapi-skill/plugins/easyapi/skills/easyapi-auth -a claude-code
+
 npx skills update        # 之后更新
-npx skills remove easyapi
+npx skills remove easyapi-studio easyapi-auth
 ```
 
 > 需要 Node 22.20+，但**只在安装时用**，skill 运行时只依赖 Python。
 
 ### 方式三：直接拷贝 skill 目录
 
-`skills/easyapi/`（生成的副本）或 `plugins/easyapi/skills/easyapi/`（源）都可以整体复制：
+`skills/<名字>/`（生成的副本）或 `plugins/easyapi/skills/<名字>/`（源）都可以整体复制。
+两个技能各自独立，装哪个用哪个：
 
 | 工具 | 目录 |
 |---|---|
-| 通用（推荐） | `~/.agents/skills/easyapi/` |
-| Claude Code | `~/.claude/skills/easyapi/` |
-| 仅当前项目 | `<项目>/.agents/skills/easyapi/` |
+| 通用（推荐） | `~/.agents/skills/easyapi-studio/`、`~/.agents/skills/easyapi-auth/` |
+| Claude Code | `~/.claude/skills/easyapi-studio/`、`~/.claude/skills/easyapi-auth/` |
+| 仅当前项目 | `<项目>/.agents/skills/easyapi-studio/`、`~/.agents/skills/easyapi-auth/` |
 
-目录名必须是 `easyapi`（skill 的 `name` 要与目录名一致）。Windows 上 `~` 是 `%USERPROFILE%`。
-复制后 skill 目录是自包含的（脚本按自身位置定位快照，状态写到 `~/.easyapi`），
-换个 cwd 也能直接用。
+目录名必须与 skill 的 `name` 一致（`easyapi-studio` / `easyapi-auth`）。
+Windows 上 `~` 是 `%USERPROFILE%`。复制后目录是自包含的（脚本按自身位置定位，
+状态写到 `~/.easyapi`），换个 cwd 也能直接用。
 
 ## 配置 API Key
 
-对 agent 说「帮我配置 key」即可——agent 会直接运行浏览器授权（`login --browser`），
-你只需要在弹出的网页里点一下「授权」。脚本会自动创建或复用一个名为 `easyapi-skill`
-的 API Key，写入 `~/.easyapi/config.json`（权限 600）并查余额验证。全程不需要在
-终端输入任何东西，也不需要在控制台手动建 key。
+对 agent 说「帮我配置 key」即可——装了两个技能时这句话会命中 `easyapi-auth`，
+只装了 `easyapi-studio` 也能登录，两者共用同一份配置。agent 会直接运行浏览器授权
+（`login --browser`），你只需要在弹出的网页里点一下「授权」。脚本会自动创建或复用一个
+名为 `easyapi-skill` 的 API Key，写入 `~/.easyapi/config.json`（权限 600）并查余额验证。
+全程不需要在终端输入任何东西，也不需要在控制台手动建 key。
 
 也可以自己动手：
 
@@ -99,7 +113,7 @@ macOS `IOPlatformUUID` 现算（取不到才退回 MAC + 主机名），**不写
 ## 快速验证
 
 ```bash
-E=~/.agents/skills/easyapi/bin/easyapi
+E=~/.agents/skills/easyapi-studio/bin/easyapi
 
 "$E" env --network                               # 解释器/目录/网关/接口能力
 "$E" quota                                       # key 有效吗？还有额度吗？
@@ -193,7 +207,7 @@ easyapi.py config --console-base https://your-console.example.com
 **Python 3.7+，仅用标准库**，不需要 pip install。`bin/easyapi` 会自动探测
 `python3` / `python` / `py -3`，Windows 上装哪个都能用；macOS 和大多数 Linux 自带。
 
-没有 Python 也能用：按 `plugins/easyapi/skills/easyapi/references/fallback-curl.md`
+没有 Python 也能用：按 `plugins/easyapi/skills/easyapi-studio/references/fallback-curl.md`
 的固定配方手工调用。降级路径**不做本地参数校验**，务必先查 schema 再发送。
 
 ## 已知限制
@@ -218,30 +232,37 @@ easyapi.py config --console-base https://your-console.example.com
 ```
 easyapi-skill/                              ← 市场根目录（ZCode 添加市场时粘贴这个）
 ├── marketplace.json                        ZCode 市场清单
-├── skills/easyapi/                         生成的标准布局副本（别手改）
+├── skills/                                 生成的标准布局副本（别手改）
+│   ├── easyapi-studio/
+│   └── easyapi-auth/
 ├── plugins/
 │   └── easyapi/                            插件本体
-│       ├── .zcode-plugin/plugin.json       插件清单
+│       ├── .zcode-plugin/plugin.json       插件清单（一个插件带两个技能）
 │       └── skills/
-│           └── easyapi/                    ← skill 源（唯一手改处）
+│           ├── easyapi-studio/             创作技能（源）
+│           │   ├── SKILL.md
+│           │   ├── bin/easyapi             启动器：探测 python3/python/py -3 + 解析目录
+│           │   ├── references/             按需阅读的细节文档
+│           │   │   ├── image.md / video.md / chat.md
+│           │   │   ├── models.md           计费与比价陷阱
+│           │   │   ├── params-conventions.md  统一参数命名与首尾帧
+│           │   │   ├── account.md          key 与额度
+│           │   │   ├── troubleshooting.md
+│           │   │   ├── fallback-curl.md    无 Python 时的 curl 配方
+│           │   │   └── model-snapshot.json 参数快照（38 个图片/视频模型）
+│           │   └── scripts/easyapi.py      仅标准库（共享实现的源）
+│           └── easyapi-auth/               只做登录与凭据
 │               ├── SKILL.md
-│               ├── bin/easyapi             启动器：探测 python3/python/py -3 + 解析目录
-│               ├── references/             按需阅读的细节文档
-│               │   ├── image.md / video.md / chat.md
-│               │   ├── models.md           计费与比价陷阱
-│               │   ├── params-conventions.md  统一参数命名与首尾帧
-│               │   ├── account.md          key 与额度
-│               │   ├── troubleshooting.md
-│               │   ├── fallback-curl.md    无 Python 时的 curl 配方
-│               │   └── model-snapshot.json 参数快照（38 个图片/视频模型）
-│               └── scripts/easyapi.py      仅标准库
+│               ├── bin/easyapi-auth
+│               └── scripts/easyapi.py      studio 脚本的字节副本（生成，别手改）
 ├── tools/build_snapshot.py                 重新生成参数快照（--from-api / --docs）
-├── tools/sync_dist.py                      生成 / 校验 skills/easyapi 副本
-└── tests/test_easyapi.py                   170 个用例（含打包、重定位、分发漂移、绑定）
+├── tools/sync_dist.py                      同步共享脚本 + 生成 / 校验 skills/ 副本
+└── tests/test_easyapi.py                   180 个用例（含打包、重定位、分发漂移、绑定）
 ```
 
 插件规范要求技能放在 `skills/<name>/SKILL.md`，所以源在插件目录里；仓库根的
-`skills/easyapi/` 是为通用安装器生成的副本，两者一致性由 `sync_dist.py --check` 与测试守住。
+`skills/<name>/` 是为通用安装器生成的副本。`sync_dist.py --check` 同时校验三件事：
+两个副本与源一致、`easyapi-auth` 的脚本与 studio 字节相同、旧的 `skills/easyapi/` 已删除。
 
 ## 开发
 
@@ -251,11 +272,11 @@ python3 tests/test_easyapi.py
 
 # 从线上重新生成参数快照（推荐；需要网关已部署 /pricing/schema）
 python3 tools/build_snapshot.py --from-api https://token.easyapi.com \
-  --out plugins/easyapi/skills/easyapi/references/model-snapshot.json
+  --out plugins/easyapi/skills/easyapi-studio/references/model-snapshot.json
 
 # 离线：从管理端导出生成
 python3 tools/build_snapshot.py --docs ../easyapi-ai-api/docs \
-  --out plugins/easyapi/skills/easyapi/references/model-snapshot.json
+  --out plugins/easyapi/skills/easyapi-studio/references/model-snapshot.json
 
 # 改完 skill 后同步分发副本，并检查是否有漂移
 python3 tools/sync_dist.py
@@ -270,7 +291,7 @@ python3 tools/sync_dist.py --check
 
 源码改动不是热重载，要走三步：
 
-1. 同步分发副本：`python3 tools/sync_dist.py`（否则根目录 `skills/easyapi/` 会落后）
+1. 同步分发副本：`python3 tools/sync_dist.py`（否则根目录 `skills/` 下的副本会落后）
 2. 把 `plugins/easyapi/.zcode-plugin/plugin.json` 的 `version` 加一，
    **同时**把 `marketplace.json` 里对应条目的 `version` 改成一样（版本不一致更新不会生效）。
 3. 在 ZCode 里：插件市场页齿轮 → **市场源 / Marketplace Sources** → 找到

@@ -29,9 +29,12 @@ import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
-# skill 本体在插件目录里（插件规范要求 skills/<name>/SKILL.md），纯 skill 交付也从这里拷
-SKILL_DIR = os.path.join(REPO_ROOT, "plugins", "easyapi", "skills", "easyapi")
+# 技能本体在插件目录里（插件规范要求 skills/<name>/SKILL.md）。
+# 两个技能共用同一份运行时：studio 的脚本是源，auth 的是字节副本。
+SKILL_DIR = os.path.join(REPO_ROOT, "plugins", "easyapi", "skills", "easyapi-studio")
 SCRIPT = os.path.join(SKILL_DIR, "scripts", "easyapi.py")
+AUTH_SKILL_DIR = os.path.join(REPO_ROOT, "plugins", "easyapi", "skills", "easyapi-auth")
+AUTH_SCRIPT = os.path.join(AUTH_SKILL_DIR, "scripts", "easyapi.py")
 
 # 1x1 PNG：测试用参考图/返回图，字节稳定便于断言完整上传
 TINY_PNG_B64 = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/"
@@ -799,8 +802,8 @@ class IntegrationBase(unittest.TestCase):
         return proc
 
     def run_launcher(self, *argv, gateway=None, key="sk-test", extra_env=None,
-                     skill_dir=None, cwd=None, interpreter=None):
-        """通过 bin/easyapi 启动器调用（验证解释器探测与目录解析）。
+                     skill_dir=None, cwd=None, interpreter=None, launcher="easyapi"):
+        """通过 bin/<launcher> 启动器调用（验证解释器探测与目录解析）。
 
         interpreter 可指定 bash 可执行文件；默认用 PATH 里的 bash。
         """
@@ -815,9 +818,9 @@ class IntegrationBase(unittest.TestCase):
         else:
             env.pop("EASYAPI_API_KEY", None)
         env.update(extra_env or {})
-        launcher = os.path.join(skill_dir or SKILL_DIR, "bin", "easyapi")
+        path = os.path.join(skill_dir or SKILL_DIR, "bin", launcher)
         return subprocess.run(
-            [interpreter or "bash", launcher] + list(argv),
+            [interpreter or "bash", path] + list(argv),
             cwd=cwd or self.workdir, env=env,
             capture_output=True, text=True, timeout=120,
         )
@@ -1725,7 +1728,8 @@ class TestPluginPackaging(unittest.TestCase):
             self.assertTrue(manifest.get("version"))
             self.assertTrue(manifest.get("description"))
 
-    def test_declared_skills_path_exists_and_holds_the_skill(self):
+    def test_declared_skills_path_exists_and_holds_the_skills(self):
+        expected = ("easyapi-studio", "easyapi-auth")
         for entry in self.market["plugins"]:
             plugin_dir = os.path.join(REPO_ROOT, entry["source"])
             with open(os.path.join(plugin_dir, ".zcode-plugin", "plugin.json"),
@@ -1736,17 +1740,19 @@ class TestPluginPackaging(unittest.TestCase):
             self.assertTrue(os.path.isdir(skills_dir),
                             "清单里声明的 skills 目录不存在：%s" % skills_dir)
 
-            skill_md = os.path.join(skills_dir, manifest["name"], "SKILL.md")
-            self.assertTrue(os.path.isfile(skill_md),
-                            "插件规范要求 skills/<name>/SKILL.md，缺失：%s" % skill_md)
+            for name in expected:
+                skill_md = os.path.join(skills_dir, name, "SKILL.md")
+                self.assertTrue(os.path.isfile(skill_md),
+                                "插件规范要求 skills/<name>/SKILL.md，缺失：%s" % skill_md)
 
     def test_skill_frontmatter_name_matches_its_directory(self):
-        frontmatter = self._frontmatter(os.path.join(SKILL_DIR, "SKILL.md"))
-        self.assertEqual(frontmatter.get("name"), os.path.basename(SKILL_DIR),
-                         "SKILL.md 的 name 必须与所在目录名一致")
-        self.assertTrue(frontmatter.get("description"))
-        self.assertLess(len(frontmatter["description"]), 1024,
-                        "description 超过 1024 字符会被丢弃")
+        for skill_dir in (SKILL_DIR, AUTH_SKILL_DIR):
+            frontmatter = self._frontmatter(os.path.join(skill_dir, "SKILL.md"))
+            self.assertEqual(frontmatter.get("name"), os.path.basename(skill_dir),
+                             "SKILL.md 的 name 必须与所在目录名一致：%s" % skill_dir)
+            self.assertTrue(frontmatter.get("description"))
+            self.assertLess(len(frontmatter["description"]), 1024,
+                            "description 超过 1024 字符会被丢弃")
 
     def test_version_is_consistent_between_manifest_and_marketplace(self):
         for entry in self.market["plugins"]:
@@ -2005,12 +2011,61 @@ class TestDistributionSync(unittest.TestCase):
         self.assertEqual(proc.returncode, 0,
                          "分发副本与插件目录不一致，跑 tools/sync_dist.py\n" + proc.stdout)
 
-    def test_generated_copy_contains_launcher(self):
+    def test_generated_copies_contain_launchers(self):
         self.assertTrue(os.path.isfile(
-            os.path.join(REPO_ROOT, "skills", "easyapi", "bin", "easyapi")))
+            os.path.join(REPO_ROOT, "skills", "easyapi-studio", "bin", "easyapi")))
+        self.assertTrue(os.path.isfile(
+            os.path.join(REPO_ROOT, "skills", "easyapi-auth", "bin", "easyapi-auth")))
 
-    def test_skill_requires_launcher(self):
+    def test_legacy_easyapi_dist_copy_is_gone(self):
+        # 改名为 easyapi-studio 后，旧目录会让安装器装到旧名字
+        self.assertFalse(os.path.isdir(os.path.join(REPO_ROOT, "skills", "easyapi")))
+
+    def test_skills_require_launchers(self):
         self.assertTrue(os.path.isfile(os.path.join(SKILL_DIR, "bin", "easyapi")))
+        self.assertTrue(os.path.isfile(os.path.join(AUTH_SKILL_DIR, "bin", "easyapi-auth")))
+
+
+class TestAuthSkill(unittest.TestCase):
+    """授权技能：只暴露身份类命令，脚本与 studio 字节一致。"""
+
+    def test_shared_script_is_byte_identical(self):
+        with open(SCRIPT, "rb") as fh:
+            primary = fh.read()
+        with open(AUTH_SCRIPT, "rb") as fh:
+            secondary = fh.read()
+        self.assertEqual(primary, secondary,
+                         "auth 的脚本必须是 studio 的副本，改一处要跑 tools/sync_dist.py")
+
+    def test_skill_md_documents_identity_only(self):
+        with open(os.path.join(AUTH_SKILL_DIR, "SKILL.md"), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("login", text)
+        self.assertIn("quota", text)
+        self.assertNotIn("--prompt", text, "授权技能不该教生成命令")
+        self.assertNotIn("image --model", text)
+        self.assertNotIn("video --model", text)
+        self.assertIn("easyapi-studio", text, "要告诉用户生成能力在另一个技能里")
+
+
+class TestAuthSkillRelocatable(IntegrationBase):
+    def setUp(self):
+        super().setUp()
+        if not shutil.which("bash"):
+            self.skipTest("需要 bash 才能验证 bin/easyapi-auth 启动器")
+
+    def test_auth_launcher_survives_copy_and_foreign_cwd(self):
+        target = os.path.join(tempfile.mkdtemp(prefix="easyapi-auth-copy-"), "easyapi-auth")
+        shutil.copytree(AUTH_SKILL_DIR, target,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        elsewhere = tempfile.mkdtemp(prefix="easyapi-auth-cwd-")
+        proc = self.run_launcher("env", "--json", key=None,
+                                 skill_dir=target, cwd=elsewhere,
+                                 launcher="easyapi-auth")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertEqual(os.path.normcase(os.path.realpath(payload["skill_dir"])),
+                         os.path.normcase(os.path.realpath(target)))
 
 
 # ---------------------------------------------------------------------------

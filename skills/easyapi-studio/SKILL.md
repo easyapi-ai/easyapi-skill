@@ -1,11 +1,13 @@
 ---
-name: easyapi
+name: easyapi-studio
 description: 通过 EasyAPI 模型网关生成图片、生成视频、文本与多模态对话，并查询可用模型、模型参数与价格。当用户要生成图片、生成视频、文生图、图生图、文生视频、图生视频、首尾帧生成视频、用 EasyAPI 调用模型、查询模型参数、比较模型价格、查询 API Key 余额额度时使用。Use when the user wants to generate images or videos, call the EasyAPI model gateway, look up model parameters, compare model prices, or check API key quota.
 ---
 
-# EasyAPI 模型网关
+# EasyAPI 创作（图片 / 视频 / 对话）
 
 所有网关请求都通过本 skill 的脚本发，**不要手工拼 curl 或 JSON**。
+只想配置 key、不生成内容时用 `easyapi-auth` 技能；本技能也保留登录入口（`login`），
+两个技能共用同一份 `~/.easyapi/config.json`。
 
 ## 0. 先确定调用入口（每次会话第一步）
 

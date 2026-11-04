@@ -510,9 +510,12 @@ class MockGateway:
                  wrong_host=False, users=None, tokens=None, require_2fa=False,
                  max_tokens=False, captcha=False, two_fa_code="123456",
                  cli_auth_enabled=True, schema_bundle=None, schema_single=None,
-                 detail_models=None, pricing_rows=None, cli_poll_enabled=False):
+                 detail_models=None, pricing_rows=None, cli_poll_enabled=False,
+                 fail_message="上游拒绝：内容不合规", fail_billing_status=None):
         self.poll_sequence = list(poll_sequence)
         self.download_ok = download_ok
+        self.fail_message = fail_message
+        self.fail_billing_status = fail_billing_status
         self.wrong_host = wrong_host
         self.users = dict(users) if users else {"user@example.com": "secret-pass"}
         self.tokens = [dict(t) for t in (tokens or [])]
@@ -673,7 +676,10 @@ class MockGateway:
                         data["download_url"] = gateway.base_url + "/result.mp4"
                         data["billed_cost"] = "0.0500"
                     if state == "failed":
-                        data["message"] = "上游拒绝：内容不合规"
+                        if gateway.fail_message:
+                            data["message"] = gateway.fail_message
+                        if gateway.fail_billing_status:
+                            data["billing_status"] = gateway.fail_billing_status
                     return self._send(200, {"code": 200, "msg": "", "data": data})
                 if self.path == "/result.mp4":
                     if not gateway.download_ok:
@@ -949,6 +955,38 @@ class TestVideoAsyncFlow(IntegrationBase):
         payload = json.loads(proc.stdout)
         self.assertFalse(payload["ok"])
         self.assertIn("内容不合规", payload["error"])
+
+    def test_transient_failed_without_reason_keeps_polling(self):
+        # 线上事故：任务刚创建（NOT_START）时网关把 status 映射成 failed，
+        # 但计费仍是 pre_deducted、没有失败原因。客户端不能因此换模型重提
+        # （会产生多笔真实扣费），必须继续轮询到 completed。
+        self.gateway = MockGateway(("failed", "completed"),
+                                   fail_message="",
+                                   fail_billing_status="pre_deducted").start()
+        proc = self.run_cli(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--poll-interval", "0.05", "--timeout", "10", "--json",
+            gateway=self.gateway,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertEqual(payload["status"], "completed")
+        self.assertGreaterEqual(self.gateway.polls, 2, "failed 不是终态时必须继续查")
+
+    def test_settled_failed_without_reason_is_terminal(self):
+        # 真失败会结算（settled）；即使没有 message 也要立刻报错，不能干等到超时。
+        self.gateway = MockGateway(("failed",),
+                                   fail_message="",
+                                   fail_billing_status="settled").start()
+        proc = self.run_cli(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--poll-interval", "0.05", "--timeout", "30", "--json",
+            gateway=self.gateway,
+        )
+        self.assertEqual(proc.returncode, 1)
+        payload = json.loads(proc.stdout)
+        self.assertFalse(payload["ok"])
+        self.assertIn("视频生成失败", payload["error"])
 
     def test_timeout_reports_task_id_for_manual_polling(self):
         self.gateway = MockGateway(("in_progress",)).start()

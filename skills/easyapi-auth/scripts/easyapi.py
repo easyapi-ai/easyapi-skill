@@ -3350,6 +3350,10 @@ def cmd_image(args, reporter):
 
 VIDEO_DONE = {"completed", "success", "succeeded", "done"}
 VIDEO_FAIL = {"failed", "failure", "error", "cancelled", "canceled"}
+# 任务刚创建（NOT_START）时网关可能短暂报 failed：没有失败原因、计费还是预扣。
+# 把这种 failed 当终态会让调用方误判并重新提交，同一需求被扣多次钱。
+# 没有原因且计费未结算时，最多容忍这么久再认定失败。
+VIDEO_FAIL_GRACE = 120
 
 
 def extract_task_id(payload):
@@ -3376,6 +3380,7 @@ def poll_video_task(cfg, key, base, task_id, reporter, timeout, interval,
     deadline = time.time() + timeout
     wait = interval
     last_status = None
+    failed_since = None
     # 查询路径跟随提交路径：/v1/videos 与 /v1/video/generations 都是「路径 + 任务 ID」
     poll_url = "%s%s/%s" % (base, endpoint.rstrip("/"), urllib.parse.quote(task_id))
 
@@ -3405,10 +3410,30 @@ def poll_video_task(cfg, key, base, task_id, reporter, timeout, interval,
         if state in VIDEO_DONE:
             return data
         if state in VIDEO_FAIL:
-            raise EasyAPIError(
-                "视频生成失败：%s" % (data.get("message") or "上游未给出原因"),
-                hint="可换模型或调整提示词后重试。",
-            )
+            message = str(data.get("message") or "").strip()
+            billing = str(data.get("billing_status") or "").strip().lower()
+            # 真失败一定带原因，或者已经结算（settled，失败会退款）。
+            # 两者都没有时，多半只是任务还没被上游接单（网关会把 NOT_START
+            # 报成 failed），继续确认，绝不能在这里让调用方换模型重提交。
+            if not message and billing != "settled":
+                if failed_since is None:
+                    failed_since = time.time()
+                    reporter.progress(
+                        "任务状态 failed 但没有失败原因，继续确认（不要重复提交）")
+                elif time.time() - failed_since >= VIDEO_FAIL_GRACE:
+                    raise EasyAPIError(
+                        "视频生成失败：%s" % (message or "上游未给出原因"),
+                        hint=("先用任务 ID 查一次状态，确认没有生成成功再重试，"
+                              "避免重复扣费。\n任务 ID：%s\n查询：GET %s"
+                              % (task_id, poll_url)),
+                    )
+            else:
+                raise EasyAPIError(
+                    "视频生成失败：%s" % (message or "上游未给出原因"),
+                    hint="可换模型或调整提示词后重试。",
+                )
+        else:
+            failed_since = None
 
         if time.time() >= deadline:
             raise EasyAPIError(

@@ -298,6 +298,24 @@ class TestFillDefaults(unittest.TestCase):
         self.assertEqual(out["duration"], 9)
 
 
+class TestBuiltinDefaultsAndTimeouts(unittest.TestCase):
+    def test_builtin_default_models(self):
+        self.assertEqual(mod.BUILTIN_DEFAULT_MODELS["image"], "qwen-image-3.0-pro")
+        self.assertEqual(mod.BUILTIN_DEFAULT_MODELS["video"], "wan3.0-video")
+
+    def test_configured_default_wins_and_empty_string_clears(self):
+        cfg = {"default_image_model": "seedream-4.5"}
+        self.assertEqual(mod.configured_default_model(cfg, "image"), "seedream-4.5")
+        self.assertIsNone(mod.configured_default_model({"default_image_model": "  "}, "image"))
+        self.assertIsNone(mod.configured_default_model({}, "image"))
+
+    def test_image_waits_thirty_minutes_by_default(self):
+        # 生图是同步接口，慢模型 + 高峰期远超 2 分钟；这里钉死 30 分钟
+        self.assertEqual(mod.DEFAULT_IMAGE_TIMEOUT, 1800)
+        self.assertEqual(mod.resolve_timeout(object(), mod.DEFAULT_IMAGE_TIMEOUT), 1800)
+        self.assertEqual(mod.resolve_timeout(object(), mod.DEFAULT_VIDEO_TIMEOUT), 900)
+
+
 class TestPickRatio(unittest.TestCase):
     """各模型分辨率键写法不统一，这是线上真实存在的坑。"""
 
@@ -1276,17 +1294,40 @@ class TestConfigCommand(IntegrationBase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
         # 不传 --model 也应该能跑，且用上刚设的默认值
-        proc = self.run_cli("video", "--prompt", "x", "--dry-run", gateway=self.gateway)
-        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertIn("mock-video", proc.stdout)
-
-    def test_no_default_and_no_model_lists_candidates(self):
-        self.gateway = MockGateway().start()
-        proc = self.run_cli("video", "--prompt", "x", "--dry-run",
+        proc = self.run_cli("video", "--prompt", "x", "--dry-run", "--json",
                             gateway=self.gateway)
-        self.assertEqual(proc.returncode, 1)
-        self.assertIn("mock-video", proc.stdout, "要列出候选模型供用户选")
-        self.assertIn("--model", proc.stdout)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertEqual(payload["model"], "mock-video")
+        self.assertEqual(payload["model_source"], "config")
+
+    def test_builtin_default_models_are_used_when_nothing_configured(self):
+        self.gateway = MockGateway().start()
+
+        proc = self.run_cli("image", "--prompt", "x", "--dry-run", "--json",
+                            gateway=self.gateway)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertEqual(payload["model"], "qwen-image-3.0-pro")
+        self.assertEqual(payload["model_source"], "builtin")
+
+        proc = self.run_cli("video", "--prompt", "x", "--dry-run", "--json",
+                            gateway=self.gateway)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertEqual(payload["model"], "wan3.0-video")
+        self.assertEqual(payload["model_source"], "builtin")
+
+    def test_empty_string_restores_builtin_default(self):
+        self.gateway = MockGateway().start()
+        self.run_cli("config", "--default-image-model", "mock-image",
+                     gateway=self.gateway)
+        self.run_cli("config", "--default-image-model", "",
+                     gateway=self.gateway)
+
+        proc = self.run_cli("config", gateway=self.gateway)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("qwen-image-3.0-pro（内置默认）", proc.stdout)
 
 
 class TestLoginPasswordFlow(IntegrationBase):

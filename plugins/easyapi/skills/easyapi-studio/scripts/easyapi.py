@@ -69,8 +69,17 @@ SNAPSHOT_PATH = os.path.join(SKILL_DIR, "references", "model-snapshot.json")
 
 DEFAULT_TTL = 86400          # 模型/参数缓存 24 小时
 DEFAULT_HTTP_TIMEOUT = 120
+DEFAULT_IMAGE_TIMEOUT = 1800  # 生图最长等待 30 分钟（慢模型 + 高峰期可能远超 2 分钟）
 DEFAULT_VIDEO_TIMEOUT = 900  # 生视频最长等待
 DEFAULT_OUT_DIR = "easyapi-out"
+
+# 用户没点名模型、也没配置默认值时使用的内置默认。图片/视频各一个，
+# 可用 `config --default-image-model` / `--default-video-model` 覆盖，
+# 传空字符串可恢复这里的值。文本等其余分类没有内置默认，仍然要求显式指定。
+BUILTIN_DEFAULT_MODELS = {
+    "image": "qwen-image-3.0-pro",
+    "video": "wan3.0-video",
+}
 
 # 登录后自动创建/复用的令牌名。固定名复用：重复登录不会堆积一堆 key，
 # 额度受账号余额约束，符合「这个 key 就是我账号」的直觉。
@@ -358,8 +367,20 @@ def resolve_timeout(args, fallback=DEFAULT_HTTP_TIMEOUT):
     return value if isinstance(value, int) and value > 0 else fallback
 
 
-def default_model(cfg, category):
+def configured_default_model(cfg, category):
+    """用户在 config 里显式设置的默认模型（没设置或空字符串时返回 None）。"""
     return (cfg.get("default_%s_model" % category) or "").strip() or None
+
+
+def _default_model_line(cfg, category):
+    """config 输出用的一行说明，明确标出「内置默认」而不是用户配置的。"""
+    configured = configured_default_model(cfg, category)
+    if configured:
+        return configured
+    builtin = BUILTIN_DEFAULT_MODELS.get(category)
+    if builtin:
+        return "%s（内置默认）" % builtin
+    return "未设置"
 
 
 # --------------------------------------------------------------------------
@@ -2383,6 +2404,8 @@ def cmd_config(args, reporter):
     # 只报「有没有」，不输出任何 key 字符：打码片段一样会进对话记录
     fingerprint = client_id()
 
+    configured_image = configured_default_model(cfg, "image")
+    configured_video = configured_default_model(cfg, "video")
     payload = {
         "config_path": CONFIG_PATH,
         "base_url": base,
@@ -2392,8 +2415,10 @@ def cmd_config(args, reporter):
         "api_key_source": source,
         "token_id": cfg.get("token_id"),
         "client_id_prefix": fingerprint[:12],
-        "default_image_model": cfg.get("default_image_model"),
-        "default_video_model": cfg.get("default_video_model"),
+        "default_image_model": configured_image or BUILTIN_DEFAULT_MODELS.get("image"),
+        "default_image_model_source": "config" if configured_image else "builtin",
+        "default_video_model": configured_video or BUILTIN_DEFAULT_MODELS.get("video"),
+        "default_video_model_source": "config" if configured_video else "builtin",
         "default_text_model": cfg.get("default_text_model"),
         "ref_mode": cfg.get("ref_mode") or "auto",
         "cache_ttl": resolve_ttl(cfg),
@@ -2406,8 +2431,8 @@ def cmd_config(args, reporter):
         "API Key         %s" % ("已配置（来自 %s）" % source if key else "未配置"),
         "设备指纹        %s…（令牌绑定的就是它，换机后会变）" % fingerprint[:12],
         "参考图模式      %s" % (cfg.get("ref_mode") or "auto（按模型家族自动选）"),
-        "默认生图模型    %s" % (cfg.get("default_image_model") or "未设置"),
-        "默认生视频模型  %s" % (cfg.get("default_video_model") or "未设置"),
+        "默认生图模型    %s" % _default_model_line(cfg, "image"),
+        "默认生视频模型  %s" % _default_model_line(cfg, "video"),
         "缓存有效期      %ss" % resolve_ttl(cfg),
     ]
     reporter.result(payload, human)
@@ -3098,14 +3123,25 @@ def load_ref_material(value, mode, reporter, timeout=DEFAULT_HTTP_TIMEOUT):
 
 
 def _resolve_model(cfg, explicit, category, reporter, refresh=False):
-    """模型解析：--model > 配置默认 > 报错并列出候选（绝不猜）。"""
-    if explicit:
-        return explicit
+    """模型解析：--model > 配置默认 > 内置默认 > 报错并列出候选。
 
-    configured = default_model(cfg, category)
+    返回 (模型名, 来源)。来源是 explicit / config / builtin，用来在结果里
+    注明「默认」，让用户知道这次不是他点名的模型。
+    """
+    if explicit:
+        return explicit, "explicit"
+
+    configured = configured_default_model(cfg, category)
     if configured:
         reporter.progress("未指定 --model，使用配置的默认模型 %s" % configured)
-        return configured
+        return configured, "config"
+
+    builtin = BUILTIN_DEFAULT_MODELS.get(category)
+    if builtin:
+        reporter.progress(
+            "未指定 --model，使用内置默认模型 %s（可用 config --default-%s-model 修改）"
+            % (builtin, category))
+        return builtin, "builtin"
 
     rows, _payload, _src = models_by_category(cfg, category, refresh)
     names = [m.get("model_name") for m in rows][:20]
@@ -3125,7 +3161,7 @@ def cmd_image(args, reporter):
     cfg = load_config()
     base, _pricing = resolve_bases(cfg)
 
-    model = _resolve_model(cfg, args.model, "image", reporter, args.refresh)
+    model, model_source = _resolve_model(cfg, args.model, "image", reporter, args.refresh)
     props, meta, notes = resolve_schema(cfg, model, "image", args.refresh)
 
     refs = [normalize_size_like(r) for r in (args.ref or [])]
@@ -3180,7 +3216,9 @@ def cmd_image(args, reporter):
         # 只接受生成类路径：带 edit 的端点留给参考图模式，别把无参考图的请求发过去
         if resolved and "edit" not in resolved.lower():
             endpoint = resolved
-    timeout = resolve_timeout(args)
+    # 生图是同步接口：慢模型 + 高峰期可能要跑十几分钟，默认等 30 分钟。
+    # 下载结果仍用普通的短超时，避免 CDN 卡住时白等半小时。
+    timeout = resolve_timeout(args, DEFAULT_IMAGE_TIMEOUT)
 
     def summarize_shape():
         shape = dict(clean)
@@ -3203,6 +3241,7 @@ def cmd_image(args, reporter):
                    if notes or warnings else [])
         reporter.result({
             "ok": True, "dry_run": True, "command": "image", "model": model,
+            "model_source": model_source,
             "endpoint": endpoint, "url": base + endpoint, "ref_mode": ref_mode,
             "ref_files": [n for n, _d in ref_files],
             "schema_source": meta.get("source"),
@@ -3262,7 +3301,8 @@ def cmd_image(args, reporter):
                 entry["path"] = path
                 entry["bytes"] = len(raw)
             elif item.get("url"):
-                path = download_to(out_dir, "%s-%d" % (stem, idx), item["url"], timeout)
+                path = download_to(out_dir, "%s-%d" % (stem, idx), item["url"],
+                                   DEFAULT_HTTP_TIMEOUT)
                 entry["path"] = path
                 entry["bytes"] = os.path.getsize(path)
         except EasyAPIError as exc:
@@ -3278,14 +3318,16 @@ def cmd_image(args, reporter):
                         REF_MODE_IMAGE if ref_mode == REF_MODE_EDIT else REF_MODE_EDIT))
 
     result = {
-        "ok": True, "command": "image", "model": model, "endpoint": endpoint,
+        "ok": True, "command": "image", "model": model,
+        "model_source": model_source, "endpoint": endpoint,
         "ref_mode": ref_mode, "count": len(files), "files": files,
         "notes": notes, "warnings": warnings,
         "usage": (payload or {}).get("usage"),
         "metadata": (payload or {}).get("metadata"),
     }
 
-    human = ["生图完成：%s，共 %d 张" % (model, len(files))]
+    human = ["生图完成：%s%s，共 %d 张"
+             % (model, "（默认）" if model_source != "explicit" else "", len(files))]
     if ref_mode:
         human.append("  参考图    %s" % REF_MODE_LABEL[ref_mode])
     for f in files:
@@ -3387,7 +3429,7 @@ def cmd_video(args, reporter):
     cfg = load_config()
     base, _pricing = resolve_bases(cfg)
 
-    model = _resolve_model(cfg, args.model, "video", reporter, args.refresh)
+    model, model_source = _resolve_model(cfg, args.model, "video", reporter, args.refresh)
     props, meta, notes = resolve_schema(cfg, model, "video", args.refresh)
 
     values = {"model": model}
@@ -3450,6 +3492,7 @@ def cmd_video(args, reporter):
                      if clean.get(key) is not None}
         reporter.result({
             "ok": True, "dry_run": True, "command": "video", "model": model,
+            "model_source": model_source,
             "endpoint": endpoint, "url": base + endpoint,
             "schema_source": meta.get("source"),
             "estimate_usd": estimate, "estimate_reason": estimate_reason,
@@ -3487,7 +3530,8 @@ def cmd_video(args, reporter):
 
     if args.no_wait:
         reporter.result({
-            "ok": True, "command": "video", "model": model, "task_id": task_id,
+            "ok": True, "command": "video", "model": model,
+            "model_source": model_source, "task_id": task_id,
             "status": "submitted", "endpoint": endpoint,
             "poll_url": "%s%s/%s" % (base, endpoint.rstrip("/"), task_id),
             "request": clean, "notes": notes, "warnings": warnings,
@@ -3517,7 +3561,8 @@ def cmd_video(args, reporter):
         download_error = exc.message
 
     result = {
-        "ok": True, "command": "video", "model": model, "task_id": task_id,
+        "ok": True, "command": "video", "model": model,
+        "model_source": model_source, "task_id": task_id,
         "status": final.get("status"), "duration": final.get("duration"),
         "resolution": final.get("resolution"), "aspect_ratio": final.get("aspect_ratio"),
         "generate_audio": final.get("generate_audio"),
@@ -3530,7 +3575,8 @@ def cmd_video(args, reporter):
         "notes": notes, "warnings": warnings,
     }
 
-    human = ["视频生成完成：%s" % model]
+    human = ["视频生成完成：%s%s"
+             % (model, "（默认）" if model_source != "explicit" else "")]
     human.append("  任务 ID   %s" % task_id)
     if final.get("duration"):
         human.append("  时长      %ss" % final["duration"])
@@ -3562,7 +3608,7 @@ def cmd_chat(args, reporter):
     cfg = load_config()
     base, _pricing = resolve_bases(cfg)
 
-    model = _resolve_model(cfg, args.model, "text", reporter, args.refresh)
+    model, model_source = _resolve_model(cfg, args.model, "text", reporter, args.refresh)
 
     messages = []
     if args.system:
@@ -3622,6 +3668,7 @@ def cmd_chat(args, reporter):
 
     result = {
         "ok": True, "command": "chat", "model": model,
+        "model_source": model_source,
         "content": content, "usage": (payload or {}).get("usage"),
         "finish_reason": (choices[0].get("finish_reason") if choices else None),
     }
@@ -3654,10 +3701,11 @@ def build_parser():
     common.add_argument("--quiet", action="store_true", help="不输出进度信息")
     common.add_argument("--dry-run", action="store_true", help="只校验并打印请求体，不发送")
     common.add_argument("--strict", action="store_true", help="schema 之外的参数直接报错")
-    # 默认值留空，由各子命令按自己的语义决定（生视频要等很久，不能用 HTTP 超时值）
+    # 默认值留空，由各子命令按自己的语义决定（生图/生视频都要等很久，不能用普通 HTTP 超时）
     common.add_argument("--timeout", type=int, default=None,
-                        help="超时秒数（生视频默认 %d，其余默认 %d）"
-                             % (DEFAULT_VIDEO_TIMEOUT, DEFAULT_HTTP_TIMEOUT))
+                        help="超时秒数（生图默认 %d，生视频默认 %d，其余默认 %d）"
+                             % (DEFAULT_IMAGE_TIMEOUT, DEFAULT_VIDEO_TIMEOUT,
+                                DEFAULT_HTTP_TIMEOUT))
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -3703,9 +3751,11 @@ def build_parser():
                    help="定价入口，仅当与网关入口不同域时才需要单独设置")
     p.add_argument("--console-base",
                    help="控制台（前端）入口，默认 %s；浏览器授权页在这里" % DEFAULT_CONSOLE_BASE)
-    p.add_argument("--default-image-model", help="默认生图模型")
-    p.add_argument("--default-video-model", help="默认生视频模型")
-    p.add_argument("--default-text-model", help="默认文本模型")
+    p.add_argument("--default-image-model",
+                   help="默认生图模型（传空字符串恢复内置默认 %s）" % BUILTIN_DEFAULT_MODELS["image"])
+    p.add_argument("--default-video-model",
+                   help="默认生视频模型（传空字符串恢复内置默认 %s）" % BUILTIN_DEFAULT_MODELS["video"])
+    p.add_argument("--default-text-model", help="默认文本模型（无内置默认）")
     p.add_argument("--ref-mode", choices=[REF_MODE_EDIT, REF_MODE_IMAGE],
                    help="持久指定参考图投递方式（覆盖家族默认；不分模型一律生效）")
     p.add_argument("--cache-ttl", type=int, help="模型缓存有效期（秒）")
@@ -3751,7 +3801,9 @@ def build_parser():
     p.set_defaults(func=cmd_compare)
 
     p = sub.add_parser("image", help="生成图片", parents=[common])
-    p.add_argument("--model", help="模型名；缺省用配置的默认生图模型")
+    p.add_argument("--model",
+                   help="模型名；缺省用默认生图模型（配置优先，否则内置 %s）"
+                        % BUILTIN_DEFAULT_MODELS["image"])
     p.add_argument("--prompt", required=True, help="图像描述（必填）")
     p.add_argument("--size", help="输出尺寸，如 1024x1024")
     p.add_argument("--n", type=int, help="生成张数")
@@ -3775,7 +3827,9 @@ def build_parser():
     p.set_defaults(func=cmd_image)
 
     p = sub.add_parser("video", help="生成视频（自动轮询到完成）", parents=[common])
-    p.add_argument("--model", help="模型名；缺省用配置的默认生视频模型")
+    p.add_argument("--model",
+                   help="模型名；缺省用默认生视频模型（配置优先，否则内置 %s）"
+                        % BUILTIN_DEFAULT_MODELS["video"])
     p.add_argument("--prompt", help="视频描述")
     p.add_argument("--duration", help="时长秒数")
     p.add_argument("--resolution", help="分辨率档，如 720p / 1080P")

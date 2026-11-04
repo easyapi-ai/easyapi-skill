@@ -132,10 +132,14 @@ MAC + 主机名），**不写进配置文件**。含义：
 # 查看当前配置（key 会打码）
 "$EASYAPI_SKILL_DIR/bin/easyapi" config
 
-# 设置默认模型，之后可以不传 --model
+# 内置默认：图片 qwen-image-3.0-pro、视频 wan3.0-video（不配置也能直接用，config 里会标「内置默认」）
+# 覆盖默认模型，之后可以不传 --model
 "$EASYAPI_SKILL_DIR/bin/easyapi" config --default-image-model seedream-4.5
 "$EASYAPI_SKILL_DIR/bin/easyapi" config --default-video-model Kling-3.0
 "$EASYAPI_SKILL_DIR/bin/easyapi" config --default-text-model deepseek-v4.1-flash
+
+# 传空字符串恢复内置默认
+"$EASYAPI_SKILL_DIR/bin/easyapi" config --default-image-model ""
 
 # 清空模型与参数缓存（模型有变动时用）
 "$EASYAPI_SKILL_DIR/bin/easyapi" config --clear-cache

@@ -129,13 +129,18 @@ multipart 契约走。
 脚本把图片下载到 `./easyapi-out/<时间戳>-<模型>-<序号>.<扩展名>`，并打印**绝对路径**：
 
 ```
-生图完成：seedream-4.5，共 2 张
-  文件  D:\work\easyapi-out\20260921-153012-seedream-4.5-1.png
+生图完成：qwen-image-3.0-pro（默认），共 2 张
+  文件  D:\work\easyapi-out\20260921-153012-qwen-image-3.0-pro-1.png
   链接  https://cdn.example.com/xxx.png
 ```
 
-终端 agent 无法内联渲染图片，所以**把文件路径给用户**（Markdown 链接形式）比给 URL 更有用 ——
-用户可以直接点开本地文件。URL 也一并输出，方便分享。
+**优先让用户在对话里看到图**：agent 支持内嵌本地图片时用 `![描述](绝对路径)` 直接展示，
+有预览面板就主动打开；纯终端再退回 Markdown 文件链接。URL 始终附上，方便分享。
+细节见 SKILL.md 的「把结果给用户看」。
+
+**等待时间**：生图是同步接口，脚本默认最多等 **30 分钟**（`--timeout` 可调），
+不再用 2 分钟的普通 HTTP 超时。agent 的 shell 超时上限较小时请用后台运行，别让 shell
+先超时把生成判失败。
 
 ## 常见坑
 

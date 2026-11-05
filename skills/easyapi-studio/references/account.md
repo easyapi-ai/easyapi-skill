@@ -177,6 +177,8 @@ MAC + 主机名），**不写进配置文件**。含义：
 ```
 ~/.easyapi/
 ├── config.json          # key、base_url、默认模型（权限 600）
+├── video_submissions.json  # 最近视频提交台账（防重复提交，7 天后自动清理）
+├── video_confirmations.json # 视频确认卡记录（10 分钟有效，提交后作废）
 └── cache/
     ├── pricing.json     # 模型列表缓存
     └── detail/*.json    # 单模型参数缓存

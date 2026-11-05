@@ -3219,6 +3219,7 @@ def cmd_image(args, reporter):
     # 生图是同步接口：慢模型 + 高峰期可能要跑十几分钟，默认等 30 分钟。
     # 下载结果仍用普通的短超时，避免 CDN 卡住时白等半小时。
     timeout = resolve_timeout(args, DEFAULT_IMAGE_TIMEOUT)
+    estimate, estimate_reason = _estimate_for(cfg, model, "image", clean, args.refresh)
 
     def summarize_shape():
         shape = dict(clean)
@@ -3227,7 +3228,6 @@ def cmd_image(args, reporter):
         return shape
 
     if args.dry_run:
-        estimate, estimate_reason = _estimate_for(cfg, model, "image", clean, args.refresh)
         detail = [
             "DRY RUN — 未发送请求，无需 API Key。",
             "地址  %s" % (base + endpoint),
@@ -3251,6 +3251,10 @@ def cmd_image(args, reporter):
         return 0
 
     key, _src = resolve_api_key(cfg)
+    count = clean.get("n") or 1
+    reporter.progress("将调用：%s（%s），%s 张，%s"
+                      % (model, MODEL_SOURCE_LABEL.get(model_source, model_source),
+                         count, describe_call_cost(estimate, estimate_reason)))
     reporter.progress("提交生图请求：%s（%s%s）"
                       % (model, meta.get("source") or "no-schema",
                          "，参考图走 %s" % ref_mode if ref_mode else ""))
@@ -3321,6 +3325,7 @@ def cmd_image(args, reporter):
         "ok": True, "command": "image", "model": model,
         "model_source": model_source, "endpoint": endpoint,
         "ref_mode": ref_mode, "count": len(files), "files": files,
+        "estimate_usd": estimate, "estimate_reason": estimate_reason,
         "notes": notes, "warnings": warnings,
         "usage": (payload or {}).get("usage"),
         "metadata": (payload or {}).get("metadata"),
@@ -3354,6 +3359,194 @@ VIDEO_FAIL = {"failed", "failure", "error", "cancelled", "canceled"}
 # 把这种 failed 当终态会让调用方误判并重新提交，同一需求被扣多次钱。
 # 没有原因且计费未结算时，最多容忍这么久再认定失败。
 VIDEO_FAIL_GRACE = 120
+
+# 付费视频任务的本地提交台账：同一台机器 10 分钟内已经提交过视频时，
+# 再提交必须显式加 --allow-multiple（由 agent 在用户明确同意后才加）。
+# 这是为了防止「任务还在排队/轮询误判」导致的连环重试，每次重试都是真扣费。
+VIDEO_RECENT_WINDOW = 600
+VIDEO_LEDGER_PATH = os.path.join(CONFIG_DIR, "video_submissions.json")
+
+MODEL_SOURCE_LABEL = {
+    "explicit": "指定",
+    "config": "配置默认",
+    "builtin": "内置默认",
+}
+
+
+def _load_video_submissions():
+    try:
+        with open(VIDEO_LEDGER_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    items = data.get("submissions") if isinstance(data, dict) else data
+    return [item for item in (items or []) if isinstance(item, dict)]
+
+
+def _save_video_submissions(items):
+    cutoff = time.time() - 7 * 86400
+    kept = [i for i in items
+            if float(i.get("created_at") or 0) >= cutoff][-50:]
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    tmp = VIDEO_LEDGER_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"submissions": kept}, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, VIDEO_LEDGER_PATH)
+    try:
+        os.chmod(VIDEO_LEDGER_PATH, 0o600)
+    except OSError:
+        pass
+
+
+def recent_video_submissions(window=VIDEO_RECENT_WINDOW):
+    now = time.time()
+    return [i for i in _load_video_submissions()
+            if now - float(i.get("created_at") or 0) < window]
+
+
+def record_video_submission(task_id, model, effective, estimate):
+    items = _load_video_submissions()
+    items.append({
+        "task_id": task_id,
+        "model": model,
+        "duration": effective.get("duration"),
+        "resolution": effective.get("resolution"),
+        "aspect_ratio": effective.get("aspect_ratio"),
+        "estimated_usd": estimate,
+        "created_at": time.time(),
+    })
+    _save_video_submissions(items)
+
+
+# 确认卡必须先于提交生成：预览时把「请求指纹」写到本地，--confirm 只认
+# 10 分钟内、同一模型同一参数的预览。这样 agent 不能跳过告知直接提交，
+# 也不能拿 A 方案的确认去提交 B 方案。
+VIDEO_CONFIRM_TTL = 600
+VIDEO_CONFIRM_PATH = os.path.join(CONFIG_DIR, "video_confirmations.json")
+
+
+def _request_fingerprint(model, request):
+    payload = json.dumps({"model": model, "request": request},
+                         ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _load_video_confirmations():
+    try:
+        with open(VIDEO_CONFIRM_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    items = data.get("confirmations") if isinstance(data, dict) else {}
+    return items if isinstance(items, dict) else {}
+
+
+def _save_video_confirmations(items):
+    now = time.time()
+    kept = {key: value for key, value in items.items()
+            if isinstance(value, dict)
+            and now - float(value.get("previewed_at") or 0) <= VIDEO_CONFIRM_TTL}
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    tmp = VIDEO_CONFIRM_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"confirmations": kept}, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, VIDEO_CONFIRM_PATH)
+    try:
+        os.chmod(VIDEO_CONFIRM_PATH, 0o600)
+    except OSError:
+        pass
+
+
+def record_video_preview(fingerprint, model, effective, estimate):
+    items = _load_video_confirmations()
+    items[fingerprint] = {
+        "previewed_at": time.time(),
+        "model": model,
+        "effective": effective,
+        "estimated_usd": estimate,
+    }
+    _save_video_confirmations(items)
+
+
+def consume_video_preview(fingerprint):
+    """取出并作废一次预览记录；过期或不存在时返回 None。"""
+    items = _load_video_confirmations()
+    record = items.pop(fingerprint, None)
+    _save_video_confirmations(items)
+    if not isinstance(record, dict):
+        return None
+    if time.time() - float(record.get("previewed_at") or 0) > VIDEO_CONFIRM_TTL:
+        return None
+    return record
+
+
+# 并发提交锁：agent 可能同时起多个 video 进程（多镜头、重试），
+# 如果只靠「先读台账再写台账」，两个进程会同时通过检查、各提交一次。
+# 提交窗口很短（只包住检查 + POST + 记账，不包轮询），用 O_EXCL 文件锁足够。
+VIDEO_LOCK_PATH = os.path.join(CONFIG_DIR, "video_submit.lock")
+VIDEO_LOCK_STALE = 1800  # POST 自身最长可等 900s，锁的过期时间必须更长
+
+
+def acquire_video_submit_lock(timeout=20):
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    deadline = time.time() + timeout
+    while True:
+        try:
+            fd = os.open(VIDEO_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(fd, str(os.getpid()).encode("ascii", "ignore"))
+            finally:
+                os.close(fd)
+            return
+        except FileExistsError:
+            try:
+                age = time.time() - os.path.getmtime(VIDEO_LOCK_PATH)
+            except OSError:
+                age = 0
+            if age > VIDEO_LOCK_STALE:
+                try:
+                    os.remove(VIDEO_LOCK_PATH)
+                except OSError:
+                    pass
+                continue
+            if time.time() >= deadline:
+                raise EasyAPIError(
+                    "另一个视频任务正在提交，本次未提交（防止并发重复扣费）",
+                    hint="等上一个提交结束再试；不要并行提交多个视频任务。",
+                )
+            time.sleep(0.2)
+
+
+def release_video_submit_lock():
+    try:
+        os.remove(VIDEO_LOCK_PATH)
+    except OSError:
+        pass
+
+
+def describe_video_params(effective, ref_count):
+    parts = []
+    if effective.get("duration") is not None:
+        parts.append("%s 秒" % effective["duration"])
+    if effective.get("resolution"):
+        parts.append(str(effective["resolution"]))
+    if effective.get("aspect_ratio"):
+        parts.append(str(effective["aspect_ratio"]))
+    if effective.get("size"):
+        parts.append(str(effective["size"]))
+    if effective.get("generate_audio") is not None:
+        parts.append("音频%s" % ("开" if effective["generate_audio"] else "关"))
+    if ref_count:
+        parts.append("参考素材 %d 个" % ref_count)
+    return "｜".join(parts) or "交给上游默认"
+
+
+def describe_call_cost(estimate, estimate_reason):
+    if estimate is not None:
+        return "预估 %s" % fmt_usd(estimate)
+    reason = estimate_reason or "无法本地估算"
+    return "无法精确预估（%s，按实际扣费为准）" % reason
+
 
 
 def extract_task_id(payload):
@@ -3510,11 +3703,17 @@ def cmd_video(args, reporter):
     # 解析不到回退 /v1/videos——它与 /v1/video/generations 在后端是同一个处理器
     endpoint, endpoints = resolve_submit_endpoint(cfg, model, "video", meta, args.refresh)
     timeout = resolve_timeout(args, DEFAULT_VIDEO_TIMEOUT)
+    effective = {key: clean.get(key) for key in
+                 ("duration", "resolution", "aspect_ratio", "size", "generate_audio")
+                 if clean.get(key) is not None}
+    estimate, estimate_reason = _estimate_for(cfg, model, "video", clean, args.refresh)
+    ref_count = len(refs) + (1 if args.image else 0) + len(args.images or [])
+    params_desc = describe_video_params(effective, ref_count)
+    cost_desc = describe_call_cost(estimate, estimate_reason)
+    source_desc = MODEL_SOURCE_LABEL.get(model_source, model_source)
+    fingerprint = _request_fingerprint(model, clean)
+
     if args.dry_run:
-        estimate, estimate_reason = _estimate_for(cfg, model, "video", clean, args.refresh)
-        effective = {key: clean.get(key) for key in
-                     ("duration", "resolution", "aspect_ratio", "size", "generate_audio")
-                     if clean.get(key) is not None}
         reporter.result({
             "ok": True, "dry_run": True, "command": "video", "model": model,
             "model_source": model_source,
@@ -3534,24 +3733,97 @@ def cmd_video(args, reporter):
         ] + (["", "提示："] + ["  - " + n for n in notes + warnings] if notes or warnings else []))
         return 0
 
-    key, _src = resolve_api_key(cfg)
-    reporter.progress("提交生视频任务：%s（%s）" % (model, meta.get("source") or "no-schema"))
-    status, payload, text = http_json(
-        "POST", base + endpoint,
-        headers={"Authorization": "Bearer " + key},
-        body=clean, timeout=timeout,
-    )
-    if status != 200:
-        message, hint = translate_error(status, payload, text, model)
-        raise EasyAPIError("提交视频任务失败：%s" % message, hint=hint)
+    # 付费视频任务的本地提交台账：10 分钟内已经提交过时，只有用户明确同意
+    #（--allow-multiple）才能再提交。轮询误判/换模型重试的代价是重复扣费。
+    recent = recent_video_submissions()
 
-    task_id = extract_task_id(payload)
-    if not task_id:
-        raise EasyAPIError(
-            "提交成功但没解析到任务 ID",
-            detail=json.dumps(payload, ensure_ascii=False)[:600],
+    if not args.confirm:
+        record_video_preview(fingerprint, model, effective, estimate)
+        human = [
+            "需要用户确认（本次未提交）",
+            "  模型    %s（%s）" % (model, source_desc),
+            "  参数    %s" % params_desc,
+            "  费用    %s" % cost_desc,
+            "  端点    POST %s" % endpoint,
+            "",
+            "把上面四项告诉用户，等用户明确确认后，再加 --confirm 重新执行同一条命令。",
+            "不要自行加 --confirm，不要换模型，不要重复提交。",
+        ]
+        if recent:
+            human += ["", "注意：最近 %d 分钟内已提交过 %d 个视频任务；如果用户要再生成一条，"
+                          "提交时需要 --allow-multiple。"
+                          % (VIDEO_RECENT_WINDOW // 60, len(recent))]
+        reporter.result({
+            "ok": True, "needs_confirmation": True, "submitted": False,
+            "command": "video", "model": model, "model_source": model_source,
+            "endpoint": endpoint, "url": base + endpoint,
+            "effective_params": effective, "reference_count": ref_count,
+            "estimate_usd": estimate, "estimate_reason": estimate_reason,
+            "recent_submissions": recent,
+            "request": clean, "notes": notes, "warnings": warnings,
+        }, human)
+        return 0
+
+    # 提交临界区：检查台账 -> 校验确认卡 -> POST -> 记账。用文件锁串行化，
+    # 防止 agent 同时起多个进程（多镜头/重试）时全部通过检查、各扣一次。
+    acquire_video_submit_lock()
+    try:
+        recent = recent_video_submissions()
+        if recent and not args.allow_multiple:
+            rows = []
+            for item in recent[-5:]:
+                when = time.strftime("%H:%M", time.localtime(float(item.get("created_at") or 0)))
+                amount = ("$%.4f" % item["estimated_usd"]
+                          if item.get("estimated_usd") is not None else "费用未知")
+                rows.append("%s｜%s｜%s｜%s"
+                            % (item.get("task_id"), item.get("model"), when, amount))
+            raise EasyAPIError(
+                "最近 %d 分钟内已提交过 %d 个视频任务，本次未提交（防止重复扣费）"
+                % (VIDEO_RECENT_WINDOW // 60, len(recent)),
+                hint=("最近的提交：\n  %s\n"
+                      "先按任务 ID 查一次状态，确认上一条没有生成成功/扣费；\n"
+                      "如果用户明确要再生成一条，由用户确认后加 --allow-multiple 重新执行。\n"
+                      "不要为了绕过限制而换模型或改参数。"
+                      % "\n  ".join(rows)),
+            )
+
+        # --confirm 必须对应一次 10 分钟内的同请求预览：防止跳过确认卡直接提交，
+        # 也防止拿 A 方案的确认去提交 B 方案（换模型/改参数后指纹不同）。
+        if consume_video_preview(fingerprint) is None:
+            raise EasyAPIError(
+                "本次视频调用没有确认卡（或已超过 10 分钟 / 模型参数已变化），未提交",
+                hint=("先运行不带 --confirm 的同一条命令，脚本会输出「需要用户确认」卡；\n"
+                      "把卡给用户看，用户确认后再原样加 --confirm。\n"
+                      "不要换模型/改参数来绕过确认。"),
+            )
+
+        key, _src = resolve_api_key(cfg)
+        reporter.progress("用户已确认：%s（%s），%s，%s"
+                          % (model, source_desc, params_desc, cost_desc))
+        reporter.progress("提交生视频任务：%s（%s）"
+                          % (model, meta.get("source") or "no-schema"))
+        status, payload, text = http_json(
+            "POST", base + endpoint,
+            headers={"Authorization": "Bearer " + key},
+            body=clean, timeout=timeout,
         )
-    reporter.progress("任务已提交：%s" % task_id)
+        if status != 200:
+            message, hint = translate_error(status, payload, text, model)
+            raise EasyAPIError("提交视频任务失败：%s" % message, hint=hint)
+
+        task_id = extract_task_id(payload)
+        if not task_id:
+            raise EasyAPIError(
+                "提交成功但没解析到任务 ID",
+                detail=json.dumps(payload, ensure_ascii=False)[:600],
+            )
+        reporter.progress("任务已提交：%s" % task_id)
+        try:
+            record_video_submission(task_id, model, effective, estimate)
+        except OSError as exc:
+            reporter.progress("警告：本地提交记录写入失败：%s" % exc)
+    finally:
+        release_video_submit_lock()
 
     if args.no_wait:
         reporter.result({
@@ -3876,6 +4148,10 @@ def build_parser():
     p.add_argument("--out", help="结果保存目录（默认 %s）" % DEFAULT_OUT_DIR)
     p.add_argument("--no-wait", action="store_true", help="提交后立即返回，不等待完成")
     p.add_argument("--poll-interval", type=float, default=3.0, help="轮询初始间隔秒数")
+    p.add_argument("--confirm", action="store_true",
+                   help="用户已确认模型/参数/预估费用后提交（不加则只输出确认卡，不扣费）")
+    p.add_argument("--allow-multiple", action="store_true",
+                   help="用户明确同意在 10 分钟内再提交一个视频任务（默认拦截重复提交）")
     p.set_defaults(func=cmd_video)
 
     p = sub.add_parser("chat", help="文本 / 多模态对话", parents=[common])

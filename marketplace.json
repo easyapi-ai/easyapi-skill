@@ -4,7 +4,7 @@
     {
       "name": "easyapi",
       "source": "./plugins/easyapi",
-      "version": "0.8.1",
+      "version": "0.9.0",
       "description": "通过 EasyAPI 模型网关生成图片、视频与文本对话，并查询模型参数与价格。发送前按模型参数定义校验，参数错误在本地拦下。",
       "displayName": "EasyAPI",
       "displayName_i18n": {

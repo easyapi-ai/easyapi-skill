@@ -316,6 +316,38 @@ class TestBuiltinDefaultsAndTimeouts(unittest.TestCase):
         self.assertEqual(mod.resolve_timeout(object(), mod.DEFAULT_VIDEO_TIMEOUT), 900)
 
 
+class TestVideoSubmitLock(unittest.TestCase):
+    """并发提交锁：防止多进程同时通过台账检查、各提交一次。"""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="easyapi-lock-")
+        self._old = mod.VIDEO_LOCK_PATH
+        mod.VIDEO_LOCK_PATH = os.path.join(self.dir, "video_submit.lock")
+
+    def tearDown(self):
+        mod.VIDEO_LOCK_PATH = self._old
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_lock_is_exclusive(self):
+        mod.acquire_video_submit_lock()
+        try:
+            with self.assertRaises(mod.EasyAPIError):
+                mod.acquire_video_submit_lock(timeout=0.3)
+        finally:
+            mod.release_video_submit_lock()
+        mod.acquire_video_submit_lock(timeout=0.3)
+        mod.release_video_submit_lock()
+
+    def test_stale_lock_is_reclaimed(self):
+        with open(mod.VIDEO_LOCK_PATH, "w", encoding="utf-8") as fh:
+            fh.write("999999")
+        old = time.time() - mod.VIDEO_LOCK_STALE - 10
+        os.utime(mod.VIDEO_LOCK_PATH, (old, old))
+        mod.acquire_video_submit_lock(timeout=0.3)
+        mod.release_video_submit_lock()
+        self.assertFalse(os.path.exists(mod.VIDEO_LOCK_PATH))
+
+
 class TestPickRatio(unittest.TestCase):
     """各模型分辨率键写法不统一，这是线上真实存在的坑。"""
 
@@ -869,6 +901,19 @@ class IntegrationBase(unittest.TestCase):
         )
         return proc
 
+    def run_video_confirmed(self, *argv, gateway=None, key="sk-test", extra_env=None):
+        """先跑不带 --confirm 的预览生成确认卡，再按同一参数提交。
+
+        脚本要求 --confirm 必须对应 10 分钟内一次同请求预览；测试里封装成两步，
+        避免每个用例都手写两遍参数。
+        """
+        preview = self.run_cli(*argv, "--json",
+                               gateway=gateway, key=key, extra_env=extra_env)
+        if preview.returncode != 0:
+            return preview
+        return self.run_cli(*argv, "--confirm", "--json",
+                            gateway=gateway, key=key, extra_env=extra_env)
+
     def run_launcher(self, *argv, gateway=None, key="sk-test", extra_env=None,
                      skill_dir=None, cwd=None, interpreter=None, launcher="easyapi"):
         """通过 bin/<launcher> 启动器调用（验证解释器探测与目录解析）。
@@ -916,7 +961,7 @@ class IntegrationBase(unittest.TestCase):
 class TestVideoAsyncFlow(IntegrationBase):
     def test_submit_poll_download(self):
         self.gateway = MockGateway(("in_progress", "completed")).start()
-        proc = self.run_cli(
+        proc = self.run_video_confirmed(
             "video", "--model", "mock-video", "--prompt", "一只猫",
             "--duration", "5", "--resolution", "720p",
             "--poll-interval", "0.05", "--timeout", "30",
@@ -946,7 +991,7 @@ class TestVideoAsyncFlow(IntegrationBase):
 
     def test_upstream_failure_surfaces_reason(self):
         self.gateway = MockGateway(("in_progress", "failed")).start()
-        proc = self.run_cli(
+        proc = self.run_video_confirmed(
             "video", "--model", "mock-video", "--prompt", "x",
             "--poll-interval", "0.05", "--timeout", "30", "--json",
             gateway=self.gateway,
@@ -963,7 +1008,7 @@ class TestVideoAsyncFlow(IntegrationBase):
         self.gateway = MockGateway(("failed", "completed"),
                                    fail_message="",
                                    fail_billing_status="pre_deducted").start()
-        proc = self.run_cli(
+        proc = self.run_video_confirmed(
             "video", "--model", "mock-video", "--prompt", "x",
             "--poll-interval", "0.05", "--timeout", "10", "--json",
             gateway=self.gateway,
@@ -978,7 +1023,7 @@ class TestVideoAsyncFlow(IntegrationBase):
         self.gateway = MockGateway(("failed",),
                                    fail_message="",
                                    fail_billing_status="settled").start()
-        proc = self.run_cli(
+        proc = self.run_video_confirmed(
             "video", "--model", "mock-video", "--prompt", "x",
             "--poll-interval", "0.05", "--timeout", "30", "--json",
             gateway=self.gateway,
@@ -988,9 +1033,91 @@ class TestVideoAsyncFlow(IntegrationBase):
         self.assertFalse(payload["ok"])
         self.assertIn("视频生成失败", payload["error"])
 
+    def test_video_without_confirm_only_returns_card(self):
+        # 不加 --confirm 时只输出确认卡（模型/参数/费用），绝不提交、绝不扣费。
+        self.gateway = MockGateway(("completed",)).start()
+        proc = self.run_cli(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--duration", "5", "--json", gateway=self.gateway,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload["needs_confirmation"])
+        self.assertFalse(payload["submitted"])
+        self.assertEqual(payload["model"], "mock-video")
+        self.assertIn("estimate_usd", payload)
+        posts = [r for r in self.gateway.requests
+                 if r[0] == "POST" and r[1] == "/v1/videos"]
+        self.assertFalse(posts, "未确认时绝不能提交任务")
+
+    def test_confirm_without_preview_is_rejected(self):
+        # 直接 --confirm 但没有先出确认卡：必须拒绝，保证用户至少看到过一次模型/费用。
+        self.gateway = MockGateway(("completed",)).start()
+        proc = self.run_cli(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--confirm", "--json", gateway=self.gateway,
+        )
+        self.assertEqual(proc.returncode, 1)
+        payload = json.loads(proc.stdout)
+        self.assertIn("确认卡", payload["error"])
+        posts = [r for r in self.gateway.requests
+                 if r[0] == "POST" and r[1] == "/v1/videos"]
+        self.assertFalse(posts, "没有预览就不允许提交")
+
+    def test_confirm_with_changed_params_is_rejected(self):
+        # 确认卡绑定请求指纹：拿 5 秒的确认去提交 8 秒必须被拒绝。
+        self.gateway = MockGateway(("completed",)).start()
+        preview = self.run_cli(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--duration", "5", "--json", gateway=self.gateway,
+        )
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+
+        proc = self.run_cli(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--duration", "8", "--confirm", "--json", gateway=self.gateway,
+        )
+        self.assertEqual(proc.returncode, 1)
+        payload = json.loads(proc.stdout)
+        self.assertIn("确认卡", payload["error"])
+        posts = [r for r in self.gateway.requests
+                 if r[0] == "POST" and r[1] == "/v1/videos"]
+        self.assertFalse(posts, "参数变化后必须重新出卡")
+
+    def test_recent_submission_blocks_second_video_unless_allowed(self):
+        # 10 分钟内第二次提交默认拦截；用户明确同意时加 --allow-multiple 放行。
+        self.gateway = MockGateway(("completed",)).start()
+        first = self.run_video_confirmed(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--poll-interval", "0.05", "--timeout", "10", "--json",
+            gateway=self.gateway,
+        )
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+
+        second = self.run_video_confirmed(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--poll-interval", "0.05", "--timeout", "10", "--json",
+            gateway=self.gateway,
+        )
+        self.assertEqual(second.returncode, 1)
+        self.assertIn("最近", second.stdout)
+        posts = [r for r in self.gateway.requests
+                 if r[0] == "POST" and r[1] == "/v1/videos"]
+        self.assertEqual(len(posts), 1, "第二次提交必须被本地拦截")
+
+        third = self.run_video_confirmed(
+            "video", "--model", "mock-video", "--prompt", "another",
+            "--allow-multiple", "--poll-interval", "0.05", "--timeout", "10",
+            "--json", gateway=self.gateway,
+        )
+        self.assertEqual(third.returncode, 0, third.stdout + third.stderr)
+        posts = [r for r in self.gateway.requests
+                 if r[0] == "POST" and r[1] == "/v1/videos"]
+        self.assertEqual(len(posts), 2, "用户明确同意后应放行")
+
     def test_timeout_reports_task_id_for_manual_polling(self):
         self.gateway = MockGateway(("in_progress",)).start()
-        proc = self.run_cli(
+        proc = self.run_video_confirmed(
             "video", "--model", "mock-video", "--prompt", "x",
             "--poll-interval", "0.05", "--timeout", "1", "--json",
             gateway=self.gateway,
@@ -1002,9 +1129,9 @@ class TestVideoAsyncFlow(IntegrationBase):
 
     def test_no_wait_returns_immediately(self):
         self.gateway = MockGateway(("in_progress",)).start()
-        proc = self.run_cli(
-            "video", "--model", "mock-video", "--prompt", "x", "--no-wait", "--json",
-            gateway=self.gateway,
+        proc = self.run_video_confirmed(
+            "video", "--model", "mock-video", "--prompt", "x",
+            "--no-wait", "--json", gateway=self.gateway,
         )
         self.assertEqual(proc.returncode, 0)
         payload = json.loads(proc.stdout)
@@ -1014,7 +1141,7 @@ class TestVideoAsyncFlow(IntegrationBase):
 
     def test_download_failure_still_reports_task_success(self):
         self.gateway = MockGateway(("completed",), download_ok=False).start()
-        proc = self.run_cli(
+        proc = self.run_video_confirmed(
             "video", "--model", "mock-video", "--prompt", "x",
             "--poll-interval", "0.05", "--timeout", "30", "--json",
             gateway=self.gateway,

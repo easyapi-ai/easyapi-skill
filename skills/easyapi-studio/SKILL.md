@@ -101,13 +101,41 @@ skill 目录、配置目录、内置快照日期、网关连通性、`/pricing/s
 所以别替它编「画质更好」这类结论。用户选定后顺带问一句「以后默认用它吗？」，同意就
 `config --default-video-model <名字>`——第二次对话就变成「直接说需求」。
 
-**花钱前确认（视频 / 多图 / 单价约 > $0.10）**：先 `--dry-run` 拿 `estimate_usd` 与
-`effective_params`，给一行确认卡再正式提交：
+### 付费调用前必须告知（脚本强制）
+
+**视频任务不加 `--confirm` 永远不会提交**，脚本会先输出一张确认卡（模型 / 参数 / 费用 /
+端点）。流程固定为：
+
+1. 先运行不带 `--confirm` 的命令（脚本只出卡，不扣费）：
+   ```bash
+   ... video --ref-image a.png --ref-image b.png --duration 10
+   ```
+2. 把卡片原样告诉用户，等用户明确回复「确认 / 生成吧」。
+3. 用户确认后，才加 `--confirm` 重新执行**同一条命令**：
+   ```bash
+   ... video --ref-image a.png --ref-image b.png --duration 10 --confirm
+   ```
+
+`--confirm` 只认 10 分钟内、同一模型同一参数的预览记录：直接加 `--confirm` 会被拒绝，
+换模型或改参数后也要重新出卡。这样用户至少会看到一次「模型 / 参数 / 费用」。
+
+确认卡模板（脚本已生成，照抄即可）：
 
 ```
-Kling-3.0｜10 秒｜1080P｜16:9｜约 $0.90
-直接发；要改说「10 秒 1080P」。
+需要用户确认（本次未提交）
+  模型    wan3.0-video（内置默认）
+  参数    10 秒｜1080P｜16:9｜参考素材 3 个
+  费用    无法精确预估（按 token 计费，按实际扣费为准）
 ```
+
+禁止：
+
+- **没等用户回复就自己加 `--confirm`**；用户只确认了模型/参数，就按那套执行，不许换。
+- **10 分钟内重复提交**：脚本会拦截并列出最近的 task ID。先按 ID 查那条任务的状态；
+  只有用户明确要再做一条时，才加 `--allow-multiple`（仍要先给确认卡）。
+- **用换模型、改参数绕过拦截**——这仍然会产生新的真实扣费。
+- 生图单张默认直接出图；`n>1` 或预估 > $0.10 时，先把脚本打印的「将调用 / 张数 / 预估」
+  告诉用户并等确认再提交。
 
 六条硬规则：
 
@@ -243,8 +271,11 @@ qwen-image / gpt-image 走 multipart `/v1/images/edits`），不要手工拼字�
 关键帧再逐段生成：
 
 ```bash
-# 3 张产品图 + 10 秒：一次提交（wan3.0-video 支持 2-30 秒、多参考图）
+# 1) 预览：只出确认卡，不提交（wan3.0-video 支持 2-30 秒、多参考图）
 ... --ref-image 产品1.png --ref-image 产品2.png --ref-image 产品3.png --duration 10
+
+# 2) 用户确认模型/参数/费用后，加 --confirm 提交同一条命令
+... --ref-image 产品1.png --ref-image 产品2.png --ref-image 产品3.png --duration 10 --confirm
 ```
 
 本地大图会转成 data URL 内嵌进请求体；3 张几 MB 的 PNG 很容易超过网关/上游的
@@ -257,6 +288,8 @@ qwen-image / gpt-image 走 multipart `/v1/images/edits`），不要手工拼字�
 
 任务报失败时**不要立刻换模型重提**：脚本对「没有原因、计费仍在预扣」的 `failed` 会自动
 继续确认；最终报错时先用任务 ID 查一次状态，确认没有成片和扣费再重试。
+**10 分钟内已经提交过视频任务时，脚本会拒绝第二次提交并打印上次的 task ID**；
+先查上一条，只有用户明确要再做一条时才加 `--allow-multiple`。
 
 ```bash
 ... --duration 10 --resolution 1080P              # 规格按 schema 的可选值，别自造
@@ -343,6 +376,11 @@ qwen-image / gpt-image 走 multipart `/v1/images/edits`），不要手工拼字�
   `model` / `model_source` / `task_id` / `endpoint` / `notes` / `warnings`）。
   `model_source` 是 `explicit` / `config` / `builtin`，用它判断要不要在回复里写「（默认）」——
   脚本的人类可读输出已经自动加了这个标注。
+- **视频确认卡**：不带 `--confirm` 时返回 `needs_confirmation: true`、`submitted: false`、
+  `estimate_usd`、`effective_params`、`recent_submissions`，退出码是 0（这不是错误）。
+  把卡给用户看，确认后再加 `--confirm`。`estimate_usd` 为 null 时按 `estimate_reason`
+  说明「按量计费，无法精确预估」。
+- 生图结果也带 `estimate_usd` / `estimate_reason`；回复里可用来说明这次的大致花费。
 - 失败时退出码非 0，`--json` 下有 `ok: false` + `error` + `hint`。**把 `hint` 转达给用户**，
   它通常就是解决办法。
 - 视频超时不会丢任务：错误里带任务 ID 与查询地址，可稍后手工续查或加大 `--timeout`。
